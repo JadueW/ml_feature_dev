@@ -3,7 +3,6 @@ import os
 import joblib
 import numpy as np
 import matplotlib.pyplot as plt
-import yaml
 from src.preprocess.preprocessor import Preprocessor
 from src.featureExtract.feature_extract import FeatureExtractor
 
