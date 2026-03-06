@@ -5,8 +5,8 @@ import shap
 
 plt.rcParams.update({
     # --- 字体设置 ---
-    'font.family': 'serif',
-    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif', 'SimHei'],
+    'font.family': 'sans-serif',
+    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif', 'SimHei', 'Microsoft YaHei UI'],
     'mathtext.fontset': 'stix',
     'mathtext.rm': 'Times New Roman',
     'mathtext.it': 'Times New Roman:italic',
@@ -56,7 +56,7 @@ plt.rcParams.update({
     'legend.handlelength': 1.5,
 
     # --- 输出 ---
-    'figure.dpi': 300,
+    'figure.dpi': 150,
     'savefig.dpi': 600,
     'savefig.format': 'pdf',
     'savefig.bbox': 'tight',
@@ -76,12 +76,12 @@ class Visualizer:
     def plot_auc(cls,fpr,tpr,auc):
         """  绘制auc """
         plt.figure(figsize=(15,8))
-        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC曲线 (AUC = {auc:.2f})')
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC Curve (AUC = {auc:.2f})')
         plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
-        plt.xlabel('假正率 (False Positive Rate)')
-        plt.ylabel('真正率 (True Positive Rate)')
+        plt.xlabel('FPR (False Positive Rate)')
+        plt.ylabel('TPR (True Positive Rate)')
         plt.title('AUC_ROC')
         plt.legend(loc="lower right")
         plt.grid(True)
@@ -93,10 +93,10 @@ class Visualizer:
     def plot_confusion_matrix(cls,confusion_matrix):
         plt.figure(figsize=(10,10))
         sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='coolwarm', cbar=False,
-                    xticklabels=['负类', '正类'], yticklabels=['负类', '正类'])
-        plt.xlabel('预测标签')
-        plt.ylabel('真实标签')
-        plt.title('混淆矩阵')
+                    xticklabels=['Neg.', 'Pos.'], yticklabels=['Neg.', 'Pos.'])
+        plt.xlabel('Predict Label')
+        plt.ylabel('True Label')
+        plt.title('Confusion Matrix')
 
         plt.tight_layout()
         plt.show()
@@ -124,22 +124,22 @@ class Visualizer:
         width = 0.35
 
         ax1.errorbar(x - width / 2, mean_train_score, yerr=std_train_score,
-                     fmt='o', capsize=5, capthick=2, elinewidth=2, markersize=8,
-                     label='训练集得分 (交叉验证)', color='blue', alpha=0.7)
+                     fmt='o-', capsize=5, capthick=2, elinewidth=2, markersize=8,
+                     label='Trainset Scores(KFold)', color='blue', alpha=0.7)
         ax1.errorbar(x + width / 2, mean_test_score, yerr=std_test_score,
-                     fmt='s', capsize=5, capthick=2, elinewidth=2, markersize=8,
-                     label='验证集得分 (交叉验证)', color='red', alpha=0.7)
+                     fmt='s-', capsize=5, capthick=2, elinewidth=2, markersize=8,
+                     label='Testset Scores(KFold)', color='red', alpha=0.7)
 
         # 添加测试集最终得分（水平线）
         test_auc = eval_result['test']['auc']
         ax1.axhline(y=test_auc, color='green', linestyle='--', linewidth=2,
-                    label=f'测试集最终 AUC: {test_auc:.4f}')
+                    label=f'Trainset Final AUC: {test_auc:.4f}')
 
-        ax1.set_xlabel('参数组合索引')
-        ax1.set_ylabel('AUC 得分')
-        ax1.set_title('交叉验证各参数组合的性能表现（带误差线）')
+        ax1.set_xlabel('Parameter Combined Index')
+        ax1.set_ylabel('AUC Scores')
+        ax1.set_title('KFold Parameter Combined Performance(With Error Line)')
         ax1.set_xticks(x)
-        ax1.set_xticklabels([f'组合 {i + 1}' for i in x], rotation=45)
+        ax1.set_xticklabels([f'Combine {i + 1}' for i in x], rotation=45)
         ax1.legend(loc='best')
         ax1.grid(True, alpha=0.3)
         ax1.set_ylim([0.5, 1.05])
@@ -233,28 +233,28 @@ class Visualizer:
             # 绘制带误差线的柱状图
             axes[i].bar(x - width / 2, mean_train_score, width,
                         yerr=std_train_score, capsize=5,
-                        label='训练集 (CV)', color='skyblue', alpha=0.7,
+                        label='Trainset (CV)', color='skyblue', alpha=0.7,
                         error_kw={'elinewidth': 2, 'ecolor': 'darkblue'})
 
             axes[i].bar(x + width / 2, mean_test_score, width,
                         yerr=std_test_score, capsize=5,
-                        label='验证集 (CV)', color='lightcoral', alpha=0.7,
+                        label='Testset (CV)', color='lightcoral', alpha=0.7,
                         error_kw={'elinewidth': 2, 'ecolor': 'darkred'})
 
             # 添加测试集最终得分（水平线）
             test_auc = eval_result['test']['auc']
             axes[i].axhline(y=test_auc, color='green', linestyle='--', linewidth=2,
-                            label=f'测试集: {test_auc:.3f}')
+                            label=f'Testset: {test_auc:.3f}')
 
             # 标记最佳参数组合
             best_idx = cv_results['rank_test_score'].argmin()
             axes[i].plot(best_idx, mean_test_score[best_idx] + std_test_score[best_idx] + 0.02,
-                         'r*', markersize=15, label='最佳组合')
+                         'r*', markersize=15, label='Best Combine')
 
             # 设置标题和标签
-            axes[i].set_title(f'训练轮次 {split_idx + 1}', fontsize=12, fontweight='bold')
-            axes[i].set_xlabel('参数组合', fontsize=10)
-            axes[i].set_ylabel('AUC 得分', fontsize=10)
+            axes[i].set_title(f'Train Iter {split_idx + 1}', fontsize=12, fontweight='bold')
+            axes[i].set_xlabel('Parameter Combine', fontsize=10)
+            axes[i].set_ylabel('AUC Scores', fontsize=10)
             axes[i].set_xticks(x)
             axes[i].set_xticklabels([f'P{i + 1}' for i in x], rotation=45, fontsize=8)
             axes[i].set_ylim([0.4, 1.05])
@@ -272,7 +272,7 @@ class Visualizer:
         for j in range(i + 1, len(axes)):
             axes[j].set_visible(False)
 
-        plt.suptitle('多次重复训练的交叉验证结果对比', fontsize=14, fontweight='bold', y=1.02)
+        plt.suptitle('Repeat Train KFold Results Compare', fontsize=14, fontweight='bold', y=1.02)
         plt.tight_layout()
         plt.show()
 

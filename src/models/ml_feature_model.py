@@ -203,7 +203,7 @@ if __name__ == '__main__':
     X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
 
     # 获取最佳结果和所有结果
-    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test)
+    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test,n_splits=1)
 
     print("\n最佳评估结果对比:")
     print("-" * 50)
