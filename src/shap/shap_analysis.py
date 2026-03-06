@@ -161,7 +161,7 @@ if __name__ == '__main__':
     # analyzer = ShapAnalyzer(best_model, X_train, X_test,
     #                         n_channels=128, n_bands=6, n_types=2)
     # analyzer.compute_shap(background_size=100)
-
+    #
     # # 可视化
     # analyzer.plot_channel_importance()
     # analyzer.plot_band_importance(separate_types=True)

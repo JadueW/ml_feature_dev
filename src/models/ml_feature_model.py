@@ -176,6 +176,7 @@ class FeatureModel:
         eval_result['best_score'] = float(best_score)
         eval_result['fpr'] = test_fpr
         eval_result['tpr'] = test_tpr
+        eval_result['best_model'] = best_model
 
         return eval_result
 

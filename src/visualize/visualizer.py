@@ -334,9 +334,9 @@ class Visualizer:
 
         plt.figure(figsize=figsize)
         plt.bar(range(n_channels), sorted_imp, color='steelblue')
-        plt.xlabel('通道 (按重要性排序)')
-        plt.ylabel('平均 |SHAP| 值')
-        plt.title(f'通道重要性（{data_name} 集）')
+        plt.xlabel('Channel(Sort By Importance)')
+        plt.ylabel('Mean |SHAP| Value')
+        plt.title(f'Channel Importance（{data_name} ）')
         plt.grid(axis='y', alpha=0.3)
 
         # 标注前10个通道的原始索引
@@ -373,9 +373,9 @@ class Visualizer:
             plt.figure(figsize=figsize)
             plt.bar(x - width / 2, imp_abs, width, label='abs', color='skyblue')
             plt.bar(x + width / 2, imp_rel, width, label='rel', color='lightcoral')
-            plt.xlabel('频段')
-            plt.ylabel('平均 |SHAP| 值')
-            plt.title(f'频段重要性（{data_name} 集）')
+            plt.xlabel('Band')
+            plt.ylabel('Avg |SHAP| Value')
+            plt.title(f'Band Importance（{data_name}）')
             plt.xticks(x, band_names)
             plt.legend()
             plt.grid(axis='y', alpha=0.3)
@@ -386,9 +386,9 @@ class Visualizer:
             imp = np.mean(np.abs(shap_reshaped), axis=(0, 1, 3))
             plt.figure(figsize=figsize)
             plt.bar(range(n_bands), imp, color='steelblue')
-            plt.xlabel('频段')
-            plt.ylabel('平均 |SHAP| 值')
-            plt.title(f'频段重要性（{data_name} 集）')
+            plt.xlabel('Band')
+            plt.ylabel('Avg |SHAP| Value')
+            plt.title(f'Band Importance（{data_name}）')
             plt.xticks(range(n_bands), band_names)
             plt.grid(axis='y', alpha=0.3)
             plt.tight_layout()
@@ -410,8 +410,8 @@ class Visualizer:
 
         plt.figure(figsize=figsize)
         bars = plt.bar(['abs', 'rel'], [imp_abs, imp_rel], color=['skyblue', 'lightcoral'])
-        plt.ylabel('平均 |SHAP| 值')
-        plt.title(f'类型重要性对比（{data_name} 集）')
+        plt.ylabel('Avg |SHAP| Value')
+        plt.title(f'Type Importance Compare（{data_name}）')
 
         for bar in bars:
             height = bar.get_height()
@@ -441,17 +441,17 @@ class Visualizer:
 
         if type_idx is None:
             heatmap_data = np.mean(np.abs(shap_reshaped), axis=(0, 3))  # (ch, band)
-            title_suffix = '合并类型'
+            title_suffix = 'Merged Type'
         else:
             type_name = 'abs' if type_idx == 0 else 'rel'
             heatmap_data = np.mean(np.abs(shap_reshaped[:, :, :, type_idx]), axis=0)
             title_suffix = type_name
 
         plt.figure(figsize=figsize)
-        sns.heatmap(heatmap_data.T, cmap='viridis', cbar_kws={'label': '平均 |SHAP|'})
-        plt.xlabel('通道')
-        plt.ylabel('频段')
-        plt.title(f'通道-频段重要性热图 ({title_suffix}, {data_name} 集)')
+        sns.heatmap(heatmap_data.T, cmap='viridis', cbar_kws={'label': 'Avg |SHAP|'})
+        plt.xlabel('Channel')
+        plt.ylabel('Band')
+        plt.title(f'Channel-Band Importance Heatmap ({title_suffix}, {data_name} )')
         plt.yticks(ticks=np.arange(n_bands)+0.5, labels=band_names)
         plt.tight_layout()
         plt.show()
@@ -492,19 +492,19 @@ class Visualizer:
                 bp['boxes'][i].set_facecolor('lightcoral')
 
         plt.axhline(y=0, color='black', linestyle='--', linewidth=1)
-        plt.xlabel('通道')
-        plt.ylabel('SHAP 值分布')
-        plt.title(f'Top {top_k_channels} 通道的 SHAP 值分布（{data_name} 集）\n绿色正贡献主导，红色负贡献主导')
+        plt.xlabel('Channel')
+        plt.ylabel('SHAP Value Distribution')
+        plt.title(f'Top {top_k_channels} Channel SHAP Value Distribution（{data_name}）\nGreen Positive Contribution，Red Negative Contribution')
         plt.grid(axis='y', alpha=0.3)
         plt.tight_layout()
         plt.show()
 
         # 打印方向解释
-        print("\n方向性解释：")
+        print("\nContribution Explain：")
         for ch in top_channels:
             mean_val = channel_mean_shap[ch]
-            direction = "正类" if mean_val > 0 else "负类"
-            print(f"通道 {ch}: 平均 SHAP = {mean_val:.4f}，对预测为 {direction} 有贡献")
+            direction = "Positive" if mean_val > 0 else "Negative"
+            print(f"Channel {ch}: AVG SHAP = {mean_val:.4f}，contribution to predict {direction}")
 
         return top_channels, channel_mean_shap[top_channels]
 
@@ -534,9 +534,9 @@ class Visualizer:
         ax1.bar(bands - width / 2, avg_shap[:, 0], width, label='abs', color='skyblue')
         ax1.bar(bands + width / 2, avg_shap[:, 1], width, label='rel', color='lightcoral')
         ax1.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax1.set_xlabel('频段')
-        ax1.set_ylabel('平均 SHAP 值')
-        ax1.set_title(f'通道 {channel_idx} 平均 SHAP')
+        ax1.set_xlabel('Band')
+        ax1.set_ylabel('Avg SHAP Value')
+        ax1.set_title(f'Channel {channel_idx} Avg SHAP Value')
         ax1.set_xticks(bands)
         ax1.set_xticklabels(band_names)
         ax1.legend()
@@ -546,11 +546,11 @@ class Visualizer:
         data_flat = ch_shap.reshape(-1)
         ax2.boxplot(data_flat, vert=False, showfliers=False)
         ax2.axvline(x=0, color='black', linestyle='--')
-        ax2.set_xlabel('SHAP 值')
-        ax2.set_title(f'通道 {channel_idx} SHAP 分布')
+        ax2.set_xlabel('SHAP Value')
+        ax2.set_title(f'Channel {channel_idx} SHAP Distribution')
         ax2.set_yticks([])
 
-        plt.suptitle(f'通道 {channel_idx} SHAP 分析（{data_name} 集）')
+        plt.suptitle(f'Channel {channel_idx} SHAP Analysis（{data_name}）')
         plt.tight_layout()
         plt.show()
         return avg_shap
@@ -570,7 +570,7 @@ class Visualizer:
 
         plt.figure(figsize=(12, 8))
         shap.summary_plot(shap_values, X, feature_names=feature_names, max_display=max_display, show=False)
-        plt.title(f'SHAP Summary Plot ({data_name} 集)')
+        plt.title(f'SHAP Summary Plot ({data_name})')
         plt.tight_layout()
         plt.show()
 
