@@ -53,13 +53,26 @@ class ShapAnalyzer:
         if use_kernel:
             self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
         else:
-            # 自动选择解释器（LinearExplainer 用于线性模型，TreeExplainer 用于树模型等）
-            self.explainer = shap.Explainer(self.model, background)
+            if hasattr(shap, 'Explainer'):
+                self.explainer = shap.Explainer(self.model, background)
+            elif hasattr(shap, 'LinearExplainer'):
+                self.explainer = shap.LinearExplainer(self.model, background)
+            else:
+                print("未找到高级解释器，使用 KernelExplainer（较慢）")
+                self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
 
         print("计算训练集 SHAP 值...")
-        self.shap_values_train = self.explainer(self.X_train)
+        try:
+            self.shap_values_train = self.explainer.shap_values(self.X_train)
+        except:
+            self.shap_values_train = self.explainer(self.X_train)
+
         print("计算测试集 SHAP 值...")
-        self.shap_values_test = self.explainer(self.X_test)
+        try:
+            self.shap_values_test = self.explainer.shap_values(self.X_test)
+        except:
+            self.shap_values_test = self.explainer(self.X_test)
+
         return self
 
     def _extract_shap_array(self, shap_values):

@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
     joblib.dump(final_datasets,os.path.join('../data/processed',data_path.split("/")[3]))
 
-    data_path = '../../data/processed/test.pkl'
+    data_path = '../data/processed/test.pkl'
     dataset = joblib.load(data_path)
     datasets = dataset['datasets']
     label_mapping = dataset['label_mapping']
