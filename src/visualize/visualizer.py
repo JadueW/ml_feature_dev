@@ -6,7 +6,7 @@ import shap
 plt.rcParams.update({
     # --- 字体设置 ---
     'font.family': 'serif',
-    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif'],
+    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif', 'SimHei'],
     'mathtext.fontset': 'stix',
     'mathtext.rm': 'Times New Roman',
     'mathtext.it': 'Times New Roman:italic',
@@ -70,6 +70,7 @@ plt.rcParams.update({
 
 class Visualizer:
     """ 绘图工具类 """
+    BAND_NAMES = ['delta', 'theta', 'alpha', 'beta', 'low_gamma', 'high_gamma']
 
     @classmethod
     def plot_auc(cls,fpr,tpr,auc):
@@ -349,11 +350,14 @@ class Visualizer:
 
     @classmethod
     def plot_shap_band_importance(cls, shap_values, n_channels=128, n_bands=6, n_types=2,
-                                  separate_types=True, data_name='test', figsize=(10, 6)):
+                                  separate_types=True, data_name='test', figsize=(10, 6),band_names = None):
         """
         绘制频段重要性：每个频段的平均绝对 SHAP 值
         separate_types: 是否区分 abs/rel
         """
+        if band_names is None:
+            band_names = cls.BAND_NAMES
+
         if shap_values.ndim == 2:
             shap_reshaped = shap_values.reshape(-1, n_channels, n_bands * n_types).reshape(-1, n_channels, n_bands,
                                                                                            n_types)
@@ -372,7 +376,7 @@ class Visualizer:
             plt.xlabel('频段')
             plt.ylabel('平均 |SHAP| 值')
             plt.title(f'频段重要性（{data_name} 集）')
-            plt.xticks(x, [f'Band {i}' for i in range(n_bands)])
+            plt.xticks(x, band_names)
             plt.legend()
             plt.grid(axis='y', alpha=0.3)
             plt.tight_layout()
@@ -385,7 +389,7 @@ class Visualizer:
             plt.xlabel('频段')
             plt.ylabel('平均 |SHAP| 值')
             plt.title(f'频段重要性（{data_name} 集）')
-            plt.xticks(range(n_bands), [f'Band {i}' for i in range(n_bands)])
+            plt.xticks(range(n_bands), band_names)
             plt.grid(axis='y', alpha=0.3)
             plt.tight_layout()
             plt.show()
@@ -421,11 +425,14 @@ class Visualizer:
 
     @classmethod
     def plot_shap_channel_band_heatmap(cls, shap_values, n_channels=128, n_bands=6, n_types=2,
-                                       type_idx=None, data_name='test', figsize=(14, 10)):
+                                       type_idx=None, data_name='test', figsize=(14, 10),band_names=None):
         """
         绘制通道-频段热图：每个通道每个频段的平均绝对 SHAP 值
         type_idx: None 合并类型；0 仅 abs；1 仅 rel
         """
+        if band_names is None:
+            band_names = cls.BAND_NAMES
+
         if shap_values.ndim == 2:
             shap_reshaped = shap_values.reshape(-1, n_channels, n_bands * n_types).reshape(-1, n_channels, n_bands,
                                                                                            n_types)
@@ -445,7 +452,7 @@ class Visualizer:
         plt.xlabel('通道')
         plt.ylabel('频段')
         plt.title(f'通道-频段重要性热图 ({title_suffix}, {data_name} 集)')
-        plt.yticks(ticks=np.arange(n_bands) + 0.5, labels=[f'Band {i}' for i in range(n_bands)])
+        plt.yticks(ticks=np.arange(n_bands)+0.5, labels=band_names)
         plt.tight_layout()
         plt.show()
         return heatmap_data
@@ -503,10 +510,13 @@ class Visualizer:
 
     @classmethod
     def plot_shap_channel_profile(cls, shap_values, channel_idx, n_channels=128, n_bands=6, n_types=2,
-                                  data_name='test', figsize=(12, 5)):
+                                  data_name='test', figsize=(12, 5),band_names=None):
         """
         绘制指定通道内频段和类型的平均 SHAP 值及其分布
         """
+        if band_names is None:
+            band_names=cls.BAND_NAMES
+
         if shap_values.ndim == 2:
             shap_reshaped = shap_values.reshape(-1, n_channels, n_bands * n_types).reshape(-1, n_channels, n_bands,
                                                                                            n_types)
@@ -528,7 +538,7 @@ class Visualizer:
         ax1.set_ylabel('平均 SHAP 值')
         ax1.set_title(f'通道 {channel_idx} 平均 SHAP')
         ax1.set_xticks(bands)
-        ax1.set_xticklabels([f'B{i}' for i in bands])
+        ax1.set_xticklabels(band_names)
         ax1.legend()
         ax1.grid(axis='y', alpha=0.3)
 

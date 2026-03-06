@@ -31,6 +31,15 @@ class ShapAnalyzer:
         self.shap_values_test = None
         self.explainer = None
 
+        # 生成特定的特证名 channel_type_band 用于后续排序
+        self.band_names = ['delta', 'theta', 'alpha', 'beta', 'low_gamma', 'high_gamma']
+        self.feature_names = []
+        for ch in range(n_channels):
+            for b in range(n_bands):
+                self.feature_names.append(f'ch{ch}_abs_{self.band_names[b]}')
+            for b in range(n_bands):
+                self.feature_names.append(f'ch{ch}_rel_{self.band_names[b]}')
+
     def compute_shap(self, background_size=100, use_kernel=False):
         """ 计算训练集和测试集的 SHAP 值 """
         # 选取背景样本
