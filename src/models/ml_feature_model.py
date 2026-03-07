@@ -49,12 +49,15 @@ class FeatureModel:
 
         print(f"样本数量: non_task={N0}, task={N1}")
 
+        m0, m1 = 0,0
+
         if strategy == 'min':
             m = min(N0, N1)
             print(f"策略: 取较小类别全部，m={m}")
         elif strategy == 'ratio':
-            m = int(min(N0, N1) * ratio)
-            print(f"策略: 按比例 {ratio:.1%}，m={m}")
+            m0 = int(N0 * ratio)
+            m1 = int(N1 * ratio)
+            print(f"策略: 按比例 {ratio:.1%}")
         elif strategy == 'fixed':
             if m is None:
                 raise ValueError("strategy='fixed' 时必须指定 m 参数")
@@ -64,14 +67,14 @@ class FeatureModel:
         else:
             raise ValueError(f"未知策略: {strategy}")
 
-        X_train = np.vstack([self.rest_data[:m], self.task_data[:m]])
-        y_train = np.concatenate([self.rest_labels[:m], self.task_labels[:m]])
+        X_train = np.vstack([self.rest_data[:m0], self.task_data[:m1]])
+        y_train = np.concatenate([self.rest_labels[:m0], self.task_labels[:m1]])
 
         # 剩余作为测试集
-        X_test = np.vstack([self.rest_data[m:], self.task_data[m:]])
-        y_test = np.concatenate([self.rest_labels[m:], self.task_labels[m:]])
+        X_test = np.vstack([self.rest_data[m0:], self.task_data[m1:]])
+        y_test = np.concatenate([self.rest_labels[m0:], self.task_labels[m1:]])
 
-        print(f"训练集: {X_train.shape[0]} 样本 (均衡: {m} non_task + {m} task)")
+        print(f"训练集: {X_train.shape[0]} 样本")
         print(f"测试集: {X_test.shape[0]} 样本")
 
         return X_train, y_train, X_test, y_test
