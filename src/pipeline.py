@@ -7,7 +7,7 @@ from src.preprocess.preprocessor import Preprocessor
 from src.featureExtract.feature_extract import FeatureExtractor
 from src.models.ml_feature_model import FeatureModel
 from src.visualize.visualizer import Visualizer
-from src.shap.shap_analysis import ShapAnalyzer
+from src.shap_analysis.shap_analysis import ShapAnalyzer
 
 
 # 针对于uECoG数据

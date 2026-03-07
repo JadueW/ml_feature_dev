@@ -2,6 +2,13 @@ import shap
 import numpy as np
 from src.visualize.visualizer import Visualizer
 
+try:
+    from shap import KernelExplainer, Explainer, LinearExplainer
+    _has_shap_classes = True
+except ImportError:
+    _has_shap_classes = False
+    print("警告: 无法直接导入 SHAP 类，将使用 shap.xxx 的方式")
+
 class ShapAnalyzer:
 
     def __init__(self, model, X_train, X_test, n_channels=128, n_bands=6, n_types=2):
@@ -50,16 +57,44 @@ class ShapAnalyzer:
             background = self.X_train
 
         print("创建 SHAP 解释器...")
-        if use_kernel:
-            self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
-        else:
-            if hasattr(shap, 'Explainer'):
-                self.explainer = shap.Explainer(self.model, background)
-            elif hasattr(shap, 'LinearExplainer'):
-                self.explainer = shap.LinearExplainer(self.model, background)
+
+        # 对于 Pipeline 模型，直接使用 predict_proba 作为可调用函数
+        if hasattr(self.model, 'named_steps') and hasattr(self.model, 'predict_proba'):
+            # 这是一个 sklearn Pipeline
+            if use_kernel:
+                print("使用 KernelExplainer（较慢但准确）")
+                if _has_shap_classes:
+                    self.explainer = KernelExplainer(self.model.predict_proba, background)
+                else:
+                    self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
             else:
-                print("未找到高级解释器，使用 KernelExplainer（较慢）")
-                self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
+                print("使用通用 Explainer (基于 predict_proba)")
+                # 使用 predict_proba 作为模型函数
+                if _has_shap_classes:
+                    self.explainer = Explainer(self.model.predict_proba, background)
+                else:
+                    self.explainer = shap.Explainer(self.model.predict_proba, background)
+        else:
+            # 非Pipeline模型，尝试使用特定解释器
+            if use_kernel:
+                if _has_shap_classes:
+                    self.explainer = KernelExplainer(self.model.predict_proba, background)
+                else:
+                    self.explainer = shap.KernelExplainer(self.model.predict_proba, background)
+            else:
+                # 尝试使用 LinearExplainer（针对线性模型）
+                try:
+                    if _has_shap_classes:
+                        self.explainer = LinearExplainer(self.model, background)
+                    else:
+                        self.explainer = shap.LinearExplainer(self.model, background)
+                    print("使用 LinearExplainer（针对线性模型优化）")
+                except Exception as e:
+                    print(f"LinearExplainer 不可用 ({e})，使用通用 Explainer")
+                    if _has_shap_classes:
+                        self.explainer = Explainer(self.model.predict_proba, background)
+                    else:
+                        self.explainer = shap.Explainer(self.model.predict_proba, background)
 
         print("计算训练集 SHAP 值...")
         try:
