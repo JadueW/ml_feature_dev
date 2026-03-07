@@ -75,6 +75,10 @@ if __name__ == '__main__':
     auc = best_eval_result['auc']
     cm = best_eval_result['cm']
 
+    model_save_path = "./ml_decoder_model.pkl"
+    joblib.dump(best_model, model_save_path)
+    print(f"模型已保存至：{model_save_path}")
+
     # 可视化auc 和混淆矩阵
     Visualizer.plot_auc(fpr, tpr, auc)
     Visualizer.plot_confusion_matrix(cm)
