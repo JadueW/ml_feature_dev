@@ -1,4 +1,4 @@
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
+from sklearn.model_selection import StratifiedKFold, GridSearchCV, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -8,7 +8,6 @@ from sklearn.metrics import (
 
 from src.visualize.visualizer import Visualizer
 
-import shap
 import numpy as np
 import warnings
 from tqdm import trange  # 导入 tqdm
@@ -49,10 +48,11 @@ class FeatureModel:
 
         print(f"样本数量: non_task={N0}, task={N1}")
 
-        m0, m1 = 0,0
+        m0, m1 = 0, 0
 
         if strategy == 'min':
             m = min(N0, N1)
+            m0 = m1 = m
             print(f"策略: 取较小类别全部，m={m}")
         elif strategy == 'ratio':
             m0 = int(N0 * ratio)
@@ -63,6 +63,7 @@ class FeatureModel:
                 raise ValueError("strategy='fixed' 时必须指定 m 参数")
             if m > min(N0, N1):
                 raise ValueError(f"m={m} 超过较小类别样本数 {min(N0, N1)}")
+            m0 = m1 = m
             print(f"策略: 固定样本数，m={m}")
         else:
             raise ValueError(f"未知策略: {strategy}")
@@ -99,7 +100,17 @@ class FeatureModel:
             "clf__l1_ratio": [0.1, 0.3, 0.5, 0.7, 0.9],
         }
 
-    def train_eval_one_split(self, X_train, y_train, X_test, y_test, inner_cv_splits=5):
+    def train_eval_one_split(
+        self,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        inner_cv_splits=5,
+        search_mode='grid',
+        n_iter=12,
+        n_jobs=-1,
+    ):
         pipe = self.make_pipeline()
         param_grid = self.make_param_grid()
         eval_result = {}
@@ -110,18 +121,34 @@ class FeatureModel:
             random_state=RANDOM_STATE
         )
 
-        gs = GridSearchCV(
-            estimator=pipe,
-            param_grid=param_grid,
-            scoring="roc_auc",
-            cv=inner_cv,
-            refit=True,
-            verbose=0,
-            return_train_score=True
-        )
-        gs.fit(X_train, y_train)
-        best_model = gs.best_estimator_
-        best_score = gs.best_score_
+        if search_mode == 'random':
+            search = RandomizedSearchCV(
+                estimator=pipe,
+                param_distributions=param_grid,
+                n_iter=n_iter,
+                scoring="roc_auc",
+                cv=inner_cv,
+                refit=True,
+                verbose=0,
+                return_train_score=True,
+                random_state=RANDOM_STATE,
+                n_jobs=n_jobs,
+            )
+        else:
+            search = GridSearchCV(
+                estimator=pipe,
+                param_grid=param_grid,
+                scoring="roc_auc",
+                cv=inner_cv,
+                refit=True,
+                verbose=0,
+                return_train_score=True,
+                n_jobs=n_jobs,
+            )
+
+        search.fit(X_train, y_train)
+        best_model = search.best_estimator_
+        best_score = search.best_score_
 
         # 训练集上的预测
         y_train_prob = best_model.predict_proba(X_train)[:, 1]
@@ -153,7 +180,7 @@ class FeatureModel:
             'cm': train_cm,
             'fpr': train_fpr,
             'tpr': train_tpr,
-            'best_params': gs.best_params_,
+            'best_params': search.best_params_,
             'cv_best_score': float(best_score)
         }
 
@@ -168,14 +195,14 @@ class FeatureModel:
         }
 
         # 存储 cv_results 用于后续可视化
-        eval_result['cv_results'] = gs.cv_results_
+        eval_result['cv_results'] = search.cv_results_
 
         # 为兼容原有代码，保留顶层结果（测试集为主）
         eval_result['auc'] = float(test_auc)
         eval_result['bal_acc'] = float(test_bal_acc)
         eval_result['f1'] = float(test_f1)
         eval_result['cm'] = test_cm
-        eval_result['best_params'] = gs.best_params_
+        eval_result['best_params'] = search.best_params_
         eval_result['best_score'] = float(best_score)
         eval_result['fpr'] = test_fpr
         eval_result['tpr'] = test_tpr
@@ -183,11 +210,31 @@ class FeatureModel:
 
         return eval_result
 
-    def train_eval_splits(self, X_train, y_train, X_test, y_test, n_splits=5):
+    def train_eval_splits(
+        self,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        n_splits=5,
+        inner_cv_splits=5,
+        search_mode='grid',
+        n_iter=12,
+        n_jobs=-1,
+    ):
 
         n_splits_eval_results = {}
         for i in trange(n_splits, desc="Training splits"):
-            eval_result = self.train_eval_one_split(X_train, y_train, X_test, y_test)
+            eval_result = self.train_eval_one_split(
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                inner_cv_splits=inner_cv_splits,
+                search_mode=search_mode,
+                n_iter=n_iter,
+                n_jobs=n_jobs,
+            )
             n_splits_eval_results[i] = eval_result
 
         best_eval_result = max(n_splits_eval_results.values(), key=lambda x: x['best_score'])
@@ -207,7 +254,17 @@ if __name__ == '__main__':
     X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
 
     # 获取最佳结果和所有结果
-    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test,n_splits=1)
+    best_eval_result, all_eval_results = fm.train_eval_splits(
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        n_splits=1,
+        inner_cv_splits=3,
+        search_mode='random',
+        n_iter=10,
+        n_jobs=-1,
+    )
 
     print("\n最佳评估结果对比:")
     print("-" * 50)

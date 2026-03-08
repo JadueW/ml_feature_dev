@@ -67,7 +67,17 @@ if __name__ == '__main__':
     X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
 
     # 获取最佳结果和所有结果
-    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test, n_splits=1)
+    best_eval_result, all_eval_results = fm.train_eval_splits(
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        n_splits=1,
+        inner_cv_splits=3,
+        search_mode='random',
+        n_iter=10,
+        n_jobs=-1,
+    )
     best_model = best_eval_result['best_model']
     fpr = best_eval_result['fpr']
     tpr = best_eval_result['tpr']
@@ -85,7 +95,12 @@ if __name__ == '__main__':
 
     # SHAP分析
     analyzer = ShapAnalyzer(best_model, X_train, X_test,n_channels=128, n_bands=6, n_types=2)
-    analyzer.compute_shap(background_size=100)
+    analyzer.compute_shap(
+        background_size=80,
+        train_max_samples=200,
+        test_max_samples=200,
+        prefer_linear_fastpath=True,
+    )
 
     # 可视化SHAP
     analyzer.plot_channel_importance()

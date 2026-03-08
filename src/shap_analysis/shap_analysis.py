@@ -2,6 +2,14 @@ import shap
 import numpy as np
 from src.visualize.visualizer import Visualizer
 
+
+def _safe_sample(X, max_samples, random_state=42):
+    if max_samples is None or len(X) <= max_samples:
+        return X
+    rng = np.random.default_rng(random_state)
+    idx = rng.choice(len(X), size=max_samples, replace=False)
+    return X[idx]
+
 try:
     from shap import KernelExplainer, Explainer, LinearExplainer
     _has_shap_classes = True
@@ -37,6 +45,7 @@ class ShapAnalyzer:
         self.shap_values_train = None
         self.shap_values_test = None
         self.explainer = None
+        self._use_transformed_space = False
 
         # 生成特定的特证名 channel_type_band 用于后续排序
         self.band_names = ['delta', 'theta', 'alpha', 'beta', 'low_gamma', 'high_gamma']
@@ -47,16 +56,58 @@ class ShapAnalyzer:
             for b in range(n_bands):
                 self.feature_names.append(f'ch{ch}_rel_{self.band_names[b]}')
 
-    def compute_shap(self, background_size=100, use_kernel=False):
+    def compute_shap(
+        self,
+        background_size=100,
+        use_kernel=False,
+        train_max_samples=None,
+        test_max_samples=None,
+        prefer_linear_fastpath=True,
+    ):
         """ 计算训练集和测试集的 SHAP 值 """
         # 选取背景样本
-        if len(self.X_train) > background_size:
-            idx = np.random.choice(len(self.X_train), background_size, replace=False)
-            background = self.X_train[idx]
-        else:
-            background = self.X_train
+        background = _safe_sample(self.X_train, background_size)
+        X_train_for_shap = _safe_sample(self.X_train, train_max_samples)
+        X_test_for_shap = _safe_sample(self.X_test, test_max_samples)
 
         print("创建 SHAP 解释器...")
+
+        # 对于标准化 + 线性模型的 Pipeline，优先使用线性快速路径
+        if (
+            prefer_linear_fastpath
+            and hasattr(self.model, 'named_steps')
+            and 'scaler' in self.model.named_steps
+            and 'clf' in self.model.named_steps
+            and hasattr(self.model.named_steps['clf'], 'coef_')
+        ):
+            scaler = self.model.named_steps['scaler']
+            clf = self.model.named_steps['clf']
+            background_t = scaler.transform(background)
+            X_train_t = scaler.transform(X_train_for_shap)
+            X_test_t = scaler.transform(X_test_for_shap)
+            self._use_transformed_space = True
+
+            print("使用线性快速路径（LinearExplainer + 标准化后特征空间）")
+            if _has_shap_classes:
+                self.explainer = LinearExplainer(clf, background_t)
+            else:
+                self.explainer = shap.LinearExplainer(clf, background_t)
+
+            print("计算训练集 SHAP 值...")
+            try:
+                self.shap_values_train = self.explainer.shap_values(X_train_t)
+            except Exception:
+                self.shap_values_train = self.explainer(X_train_t)
+
+            print("计算测试集 SHAP 值...")
+            try:
+                self.shap_values_test = self.explainer.shap_values(X_test_t)
+            except Exception:
+                self.shap_values_test = self.explainer(X_test_t)
+
+            self.X_train = X_train_for_shap
+            self.X_test = X_test_for_shap
+            return self
 
         # 对于 Pipeline 模型，直接使用 predict_proba 作为可调用函数
         if hasattr(self.model, 'named_steps') and hasattr(self.model, 'predict_proba'):
@@ -98,15 +149,18 @@ class ShapAnalyzer:
 
         print("计算训练集 SHAP 值...")
         try:
-            self.shap_values_train = self.explainer.shap_values(self.X_train)
-        except:
-            self.shap_values_train = self.explainer(self.X_train)
+            self.shap_values_train = self.explainer.shap_values(X_train_for_shap)
+        except Exception:
+            self.shap_values_train = self.explainer(X_train_for_shap)
 
         print("计算测试集 SHAP 值...")
         try:
-            self.shap_values_test = self.explainer.shap_values(self.X_test)
-        except:
-            self.shap_values_test = self.explainer(self.X_test)
+            self.shap_values_test = self.explainer.shap_values(X_test_for_shap)
+        except Exception:
+            self.shap_values_test = self.explainer(X_test_for_shap)
+
+        self.X_train = X_train_for_shap
+        self.X_test = X_test_for_shap
 
         return self
 
