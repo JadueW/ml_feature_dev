@@ -143,7 +143,6 @@ class FeatureModel:
         best_model = gs.best_estimator_
         best_score = gs.best_score_
 
-        # 基于训练集 ROC 曲线寻找最佳阈值（Youden's J）
         y_train_prob_for_thr = best_model.predict_proba(X_train)[:, 1]
         thr_fpr, thr_tpr, thresholds = roc_curve(y_train, y_train_prob_for_thr)
         best_thr_idx = np.argmax(thr_tpr - thr_fpr)
@@ -331,12 +330,3 @@ if __name__ == '__main__':
     fm = FeatureModel(X_all, y_all, groups_all, fs)
 
     results = fm.cross_validate_logo(n_jobs=-1)
-
-    last_subj = len(results) - 1
-    if last_subj in results:
-        Visualizer.plot_auc(
-            results[last_subj]['test']['fpr'],
-            results[last_subj]['test']['tpr'],
-            results[last_subj]['test']['auc']
-        )
-        Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
