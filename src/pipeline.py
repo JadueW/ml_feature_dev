@@ -42,10 +42,12 @@ if __name__ == '__main__':
     RECONSTRUCTED_DATASET_PATH = '../data/reconstruct_datasets/'
     PROCESSED_DATASET_PATH = '../data/processed/'
     MODEL_SAVE_PATH = '../models/'
+    VISUALIZATION_RESULTS = '../visualization_results/'
 
     os.makedirs(MODEL_SAVE_PATH,exist_ok=True)
     os.makedirs(RECONSTRUCTED_DATASET_PATH,exist_ok=True)
     os.makedirs(PROCESSED_DATASET_PATH,exist_ok=True)
+    os.makedirs(VISUALIZATION_RESULTS,exist_ok=True)
 
     RAW_DATA_LIST = [f for f in os.listdir('../data/raw/')]
     for f in RAW_DATA_LIST:
@@ -114,9 +116,10 @@ if __name__ == '__main__':
         Visualizer.plot_auc(
             results[last_subj]['test']['fpr'],
             results[last_subj]['test']['tpr'],
-            results[last_subj]['test']['auc']
+            results[last_subj]['test']['auc'],
+            save_path=os.path.join(VISUALIZATION_RESULTS, 'cross_sub_auc_res.tif')
         )
-        Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
+        Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'],save_path=os.path.join(VISUALIZATION_RESULTS, 'cross_sub_confusion_matrix_res.tif'))
 
     # 7. 模型保存
     fm.model_save(results,MODEL_SAVE_PATH)

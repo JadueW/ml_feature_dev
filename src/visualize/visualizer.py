@@ -105,7 +105,7 @@ class Visualizer:
         plt.tight_layout()
         plt.show()
         plt.savefig(
-            kwargs.get("save_path", "./auc_result.tif"),
+            kwargs.get("save_path", "./cm_result.tif"),
             kwargs.get("dpi", 300)
         )
 
