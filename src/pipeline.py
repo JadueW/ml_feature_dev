@@ -107,7 +107,6 @@ if __name__ == '__main__':
     # 5. 基于网格搜索和LeaveOneGroupOut的跨被试模型训练和交叉验证
     fm = FeatureModel(X_all, y_all, groups_all, fs)
     results = fm.cross_validate_logo(n_jobs=-1)
-    best_model = None
 
     # 6. 取其中一个被试的结果进行可视化验证
     last_subj = len(results) - 1
@@ -119,18 +118,9 @@ if __name__ == '__main__':
         )
         Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
 
-
     # 7. 模型保存
-    now = datetime.now()
-    date_str = now.strftime("%Y%m%d")
-    model_name = f"cross_subjects_model_{date_str}.pkl"
-    joblib.dump(best_model, os.path.join(MODEL_SAVE_PATH,model_name))
-    print(f"模型已保存至：{MODEL_SAVE_PATH}")
+    fm.model_save(results,MODEL_SAVE_PATH)
 
-
-    # # 可视化auc 和混淆矩阵
-    # Visualizer.plot_auc(fpr, tpr, auc)
-    # Visualizer.plot_confusion_matrix(cm)
 
     # # SHAP分析
     # analyzer = ShapAnalyzer(best_model, X_train, X_test,n_channels=128, n_bands=6, n_types=2)
