@@ -1,6 +1,7 @@
 import os
 from tqdm import tqdm
 import joblib
+from joblib import Parallel, delayed
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV,LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
@@ -81,11 +82,11 @@ class FeatureModel:
 
     def make_pipeline(self):
         clf = LogisticRegression(
-            penalty="elasticnet",
+            # penalty="elasticnet",
             solver="saga",
             max_iter=20000,
             class_weight="balanced",
-            random_state=RANDOM_STATE,
+            random_state=RANDOM_STATE
         )
         pipe = Pipeline([
             ("scaler", StandardScaler()),
@@ -117,7 +118,8 @@ class FeatureModel:
             cv=inner_cv,
             refit=True,
             verbose=0,
-            return_train_score=True
+            return_train_score=True,
+            n_jobs=-1
         )
         gs.fit(X_train, y_train)
         best_model = gs.best_estimator_
@@ -193,40 +195,56 @@ class FeatureModel:
         best_eval_result = max(n_splits_eval_results.values(), key=lambda x: x['best_score'])
         return best_eval_result, n_splits_eval_results
 
-    def cross_validate_logo(self):
+    def _eval_single_fold(self, fold_idx, train_idx, test_idx, X_all, y_all, groups_all):
+        X_train = X_all[train_idx]
+        y_train = y_all[train_idx]
+        X_test = X_all[test_idx]
+        y_test = y_all[test_idx]
+        test_group = groups_all[test_idx][0]
+
+        res = self.train_eval_one_split(X_train, y_train, X_test, y_test,inner_cv_splits=5)
+
+        print(f"Fold {fold_idx} (被试 {test_group}) 完成: AUC={res['test']['auc']:.4f}")
+        return fold_idx, res
+
+    def cross_validate_logo(self, n_jobs=-1):
         logo = LeaveOneGroupOut()
-        results = {}
         subject_ids = np.unique(self.groups_all)
+        n_folds = len(subject_ids)
 
-        print(f"\n共 {len(subject_ids)} 个被试")
-        print(f"被试ID: {list(subject_ids)}")
+        print(f"\n共 {n_folds} 个被试")
+        print(f"并行数: {n_jobs if n_jobs != -1 else '全部核心'}")
 
-        for i, (train_idx, test_idx) in enumerate(logo.split(self.X_all, self.y_all,self.groups_all)):
-            print(f"Fold {i}:")
-            print(f"  Train: index={train_idx}, group={groups_all[train_idx]}")
-            print(f"  Test:  index={test_idx}, group={groups_all[test_idx]}")
+        splits = list(logo.split(self.X_all, self.y_all, self.groups_all))
 
-            X_train = self.X_all[train_idx]
-            y_train = self.y_all[train_idx]
-            X_test = self.X_all[test_idx]
-            y_test = self.y_all[test_idx]
+        if n_jobs == 1:
+            results = {}
+            for i, (train_idx, test_idx) in enumerate(splits):
+                print(f"\nFold {i}:")
+                _, res = self._eval_single_fold(
+                    i, train_idx, test_idx,
+                    self.X_all, self.y_all, self.groups_all
+                )
+                results[i] = res
+        else:
+            parallel_results = Parallel(n_jobs=n_jobs, verbose=10)(
+                delayed(self._eval_single_fold)(
+                    i, train_idx, test_idx,
+                    self.X_all, self.y_all, self.groups_all
+                )
+                for i, (train_idx, test_idx) in enumerate(splits)
+            )
+            results = {k: v for k, v in parallel_results}
 
-            print(f"训练样本: {X_train.shape[0]} | 测试样本: {X_test.shape[0]}")
-            res = self.train_eval_one_split(X_train, y_train, X_test, y_test)
-            results[i] = res
+        # 汇总统计
+        print("跨被试最终结果（被试平均）")
+        aucs = [results[s]['test']['auc'] for s in range(n_folds)]
+        baccs = [results[s]['test']['bal_acc'] for s in range(n_folds)]
+        f1s = [results[s]['test']['f1'] for s in range(n_folds)]
 
-            print(f"测试集 AUC: {res['test']['auc']:.4f}")
-            print(f"准确率: {res['test']['bal_acc']:.4f}")
-
-            # 汇总结果
-            aucs = [results[s]['test']['auc'] for s in subject_ids]
-            baccs = [results[s]['test']['bal_acc'] for s in subject_ids]
-            f1s = [results[s]['test']['f1'] for s in subject_ids]
-
-            print("跨被试最终结果（被试平均）")
-            print(f"AUC:      {np.mean(aucs):.4f} ± {np.std(aucs):.4f}")
-            print(f"Bal Acc:  {np.mean(baccs):.4f} ± {np.std(baccs):.4f}")
-            print(f"F1:       {np.mean(f1s):.4f} ± {np.std(f1s):.4f}")
+        print(f"AUC:      {np.mean(aucs):.4f} ± {np.std(aucs):.4f}")
+        print(f"Bal Acc:  {np.mean(baccs):.4f} ± {np.std(baccs):.4f}")
+        print(f"F1:       {np.mean(f1s):.4f} ± {np.std(f1s):.4f}")
 
         return results
 
@@ -240,16 +258,15 @@ if __name__ == '__main__':
     X_list, y_list, group_list = [], [], []
     fs = None
 
-    for subj_idx, file_path in enumerate(tqdm(processed_files, desc="加载被试数据")):
+    print("加载数据...")
+    for subj_idx, file_path in enumerate(tqdm(processed_files)):
         data = joblib.load(file_path)
         rest_data = data["datasets"][0]
         task_data = data["datasets"][1]
 
-        # 标签
         rest_label = np.zeros(len(rest_data))
         task_label = np.ones(len(task_data))
 
-        # 拼接
         X_subj = np.vstack([rest_data, task_data])
         y_subj = np.hstack([rest_label, task_label])
         group_subj = np.full(len(X_subj), subj_idx)
@@ -261,21 +278,21 @@ if __name__ == '__main__':
         if fs is None:
             fs = data["fs"]
 
-    # 合并成全局数据
     X_all = np.vstack(X_list)
     y_all = np.hstack(y_list)
     groups_all = np.hstack(group_list)
 
-    print(f"\n样本: {X_all.shape[0]}, 被试数: {len(np.unique(groups_all))}")
+    print(f"\n总样本: {X_all.shape[0]}, 被试数: {len(np.unique(groups_all))}")
 
-    # 3. 模型 + 跨被试验证
     fm = FeatureModel(X_all, y_all, groups_all, fs)
-    results = fm.cross_validate_logo()
 
-    last_subj = 4
-    Visualizer.plot_auc(
-        results[last_subj]['test']['fpr'],
-        results[last_subj]['test']['tpr'],
-        results[last_subj]['test']['auc']
-    )
-    Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
+    results = fm.cross_validate_logo(n_jobs=-1)
+
+    last_subj = len(results) - 1
+    if last_subj in results:
+        Visualizer.plot_auc(
+            results[last_subj]['test']['fpr'],
+            results[last_subj]['test']['tpr'],
+            results[last_subj]['test']['auc']
+        )
+        Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
