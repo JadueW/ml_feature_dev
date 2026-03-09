@@ -195,32 +195,3 @@ class ShapAnalyzer:
             shap_arr, X_arr, feature_names=self.feature_names,
             max_display=max_display, data_name=data, **kwargs
         )
-
-
-# ==================== 使用示例 ====================
-if __name__ == '__main__':
-    # 假设你已经有了训练好的模型和数据集
-    # from your_feature_model import fm, X_train, y_train, X_test, y_test, best_eval_result
-
-    # 从 best_eval_result 中获取最佳模型
-    # best_model = best_eval_result['best_model']  # 注意你需要保存模型
-
-    # 示例：创建分析器并计算 SHAP
-    # analyzer = ShapAnalyzer(best_model, X_train, X_test,
-    #                         n_channels=128, n_bands=6, n_types=2)
-    # analyzer.compute_shap(background_size=100)
-    #
-    # # 可视化
-    # analyzer.plot_channel_importance()
-    # analyzer.plot_band_importance(separate_types=True)
-    # analyzer.plot_type_importance()
-    # analyzer.plot_channel_band_heatmap(type_idx=None)  # 合并类型
-    # analyzer.plot_channel_band_heatmap(type_idx=0)     # abs
-    # analyzer.plot_channel_band_heatmap(type_idx=1)     # rel
-    # analyzer.plot_direction_summary(top_k_channels=10)
-    # analyzer.plot_summary(max_display=30)
-
-    # # 分析特定通道
-    # analyzer.plot_channel_profile(channel_idx=0)
-
-    pass
