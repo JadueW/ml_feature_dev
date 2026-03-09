@@ -73,7 +73,7 @@ class Visualizer:
     BAND_NAMES = ['delta', 'theta', 'alpha', 'beta', 'low_gamma', 'high_gamma']
 
     @classmethod
-    def plot_auc(cls,fpr,tpr,auc):
+    def plot_auc(cls,fpr,tpr,auc,**kwargs):
         """  绘制auc """
         plt.figure(figsize=(15,8))
         plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC Curve (AUC = {auc:.2f})')
@@ -86,11 +86,15 @@ class Visualizer:
         plt.legend(loc="lower right")
         plt.grid(True)
         plt.show()
+        plt.savefig(
+            kwargs.get("save_path","./auc_result.tif"),
+            kwargs.get("dpi",300)
+        )
 
 
 
     @classmethod
-    def plot_confusion_matrix(cls,confusion_matrix):
+    def plot_confusion_matrix(cls,confusion_matrix,**kwargs):
         plt.figure(figsize=(10,10))
         sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='coolwarm', cbar=False,
                     xticklabels=['Neg.', 'Pos.'], yticklabels=['Neg.', 'Pos.'])
@@ -100,6 +104,10 @@ class Visualizer:
 
         plt.tight_layout()
         plt.show()
+        plt.savefig(
+            kwargs.get("save_path", "./auc_result.tif"),
+            kwargs.get("dpi", 300)
+        )
 
     @classmethod
     def plot_cv_results(cls, eval_result):
