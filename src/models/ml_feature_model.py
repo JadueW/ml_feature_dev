@@ -1,5 +1,5 @@
 import os
-from tqdm import tqdm
+from tqdm import tqdm,trange
 import joblib
 from joblib import Parallel, delayed
 
@@ -16,7 +16,8 @@ from src.visualize.visualizer import Visualizer
 import shap
 import numpy as np
 import warnings
-from tqdm import trange  # 导入 tqdm
+from datetime import datetime
+
 
 warnings.filterwarnings("ignore")
 
@@ -172,7 +173,6 @@ class FeatureModel:
         # 存储 cv_results 用于后续可视化
         eval_result['cv_results'] = gs.cv_results_
 
-        # 为兼容原有代码，保留顶层结果（测试集为主）
         eval_result['auc'] = float(test_auc)
         eval_result['bal_acc'] = float(test_bal_acc)
         eval_result['f1'] = float(test_f1)
@@ -247,6 +247,21 @@ class FeatureModel:
         print(f"F1:       {np.mean(f1s):.4f} ± {np.std(f1s):.4f}")
 
         return results
+
+    def model_save(self,results,save_path):
+        """ 用于生成best_models并保存模型到指定位置 """
+        best_score = 0.0
+        best_model = None
+        for k,v in results.items():
+            if v['best_score'] > best_score:
+                best_score = v['best_score']
+                best_model = v['best_model']
+
+        now = datetime.now()
+        date_str = now.strftime("%Y%m%d")
+        model_name = f"cross_subjects_model_{date_str}.pkl"
+        joblib.dump(best_model, os.path.join(save_path, model_name))
+        print(f"模型已保存至：{save_path},best_score = {best_score}, best_model = {best_model}")
 
 
 if __name__ == '__main__':
