@@ -1,4 +1,8 @@
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
+import os
+from tqdm import tqdm
+import joblib
+
+from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV,LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -23,15 +27,11 @@ N_TYPES = 2  # 0=abs, 1=rel
 N_FEATURES = N_CHANNELS * N_BANDS * N_TYPES
 
 class FeatureModel:
-    def __init__(self, datasets, label_mapping, fs):
-        self.datasets = datasets
-        self.label_mapping = label_mapping
+    def __init__(self, X_all, y_all, groups_all,fs):
+        self.X_all = X_all
+        self.y_all = y_all
+        self.groups_all = groups_all
         self.fs = fs
-
-        self.rest_data = self.datasets[0]
-        self.task_data = self.datasets[1]
-        self.rest_labels = np.ones(self.rest_data.shape[0]) * 0
-        self.task_labels = np.ones(self.task_data.shape[0]) * 1
 
     def train_test_split_manual(self, strategy='min', ratio=0.8, m=None):
         """
@@ -193,64 +193,89 @@ class FeatureModel:
         best_eval_result = max(n_splits_eval_results.values(), key=lambda x: x['best_score'])
         return best_eval_result, n_splits_eval_results
 
+    def cross_validate_logo(self):
+        logo = LeaveOneGroupOut()
+        results = {}
+        subject_ids = np.unique(self.groups_all)
+
+        print(f"\n共 {len(subject_ids)} 个被试")
+        print(f"被试ID: {list(subject_ids)}")
+
+        for i, (train_idx, test_idx) in enumerate(logo.split(self.X_all, self.y_all,self.groups_all)):
+            print(f"Fold {i}:")
+            print(f"  Train: index={train_idx}, group={groups_all[train_idx]}")
+            print(f"  Test:  index={test_idx}, group={groups_all[test_idx]}")
+
+            X_train = self.X_all[train_idx]
+            y_train = self.y_all[train_idx]
+            X_test = self.X_all[test_idx]
+            y_test = self.y_all[test_idx]
+
+            print(f"训练样本: {X_train.shape[0]} | 测试样本: {X_test.shape[0]}")
+            res = self.train_eval_one_split(X_train, y_train, X_test, y_test)
+            results[i] = res
+
+            print(f"测试集 AUC: {res['test']['auc']:.4f}")
+            print(f"准确率: {res['test']['bal_acc']:.4f}")
+
+            # 汇总结果
+            aucs = [results[s]['test']['auc'] for s in subject_ids]
+            baccs = [results[s]['test']['bal_acc'] for s in subject_ids]
+            f1s = [results[s]['test']['f1'] for s in subject_ids]
+
+            print("跨被试最终结果（被试平均）")
+            print(f"AUC:      {np.mean(aucs):.4f} ± {np.std(aucs):.4f}")
+            print(f"Bal Acc:  {np.mean(baccs):.4f} ± {np.std(baccs):.4f}")
+            print(f"F1:       {np.mean(f1s):.4f} ± {np.std(f1s):.4f}")
+
+        return results
+
 
 if __name__ == '__main__':
-    data_path = '../../data/processed/test.pkl'
-    import joblib
+    # 1. 数据文件夹
+    PROCESSED_DATASET_PATH = '../../data/processed/'
+    processed_files = [os.path.join(PROCESSED_DATASET_PATH,f) for f in os.listdir(PROCESSED_DATASET_PATH)]
 
-    dataset = joblib.load(data_path)
-    datasets = dataset['datasets']
-    label_mapping = dataset['label_mapping']
-    fs = dataset['fs']
+    # 2. 加载所有被试数据，并分配 group
+    X_list, y_list, group_list = [], [], []
+    fs = None
 
-    fm = FeatureModel(datasets, label_mapping, fs)
-    X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
+    for subj_idx, file_path in enumerate(tqdm(processed_files, desc="加载被试数据")):
+        data = joblib.load(file_path)
+        rest_data = data["datasets"][0]
+        task_data = data["datasets"][1]
 
-    # 获取最佳结果和所有结果
-    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test,n_splits=1)
+        # 标签
+        rest_label = np.zeros(len(rest_data))
+        task_label = np.ones(len(task_data))
 
-    print("\n最佳评估结果对比:")
-    print("-" * 50)
-    print("训练集表现:")
-    print(f"  AUC: {best_eval_result['train']['auc']:.4f}")
-    print(f"  平衡准确率: {best_eval_result['train']['bal_acc']:.4f}")
-    print(f"  F1: {best_eval_result['train']['f1']:.4f}")
-    print(f"  交叉验证得分: {best_eval_result['train']['cv_best_score']:.4f}")
+        # 拼接
+        X_subj = np.vstack([rest_data, task_data])
+        y_subj = np.hstack([rest_label, task_label])
+        group_subj = np.full(len(X_subj), subj_idx)
 
-    print("\n测试集表现:")
-    print(f"  AUC: {best_eval_result['test']['auc']:.4f}")
-    print(f"  平衡准确率: {best_eval_result['test']['bal_acc']:.4f}")
-    print(f"  F1: {best_eval_result['test']['f1']:.4f}")
-    print("-" * 50)
+        X_list.append(X_subj)
+        y_list.append(y_subj)
+        group_list.append(group_subj)
 
-    # 检查过拟合情况
-    train_auc = best_eval_result['train']['auc']
-    test_auc = best_eval_result['test']['auc']
-    gap = train_auc - test_auc
-    print(f"训练集-测试集 AUC 差距: {gap:.4f}")
-    if gap > 0.1:
-        print("⚠️ 可能存在过拟合，差距较大")
-    elif gap < -0.05:
-        print("⚠️ 测试集表现优于训练集，数据分布可能不一致")
-    else:
-        print("✅ 模型泛化能力良好")
+        if fs is None:
+            fs = data["fs"]
 
-    print(f"\n最佳参数: {best_eval_result['best_params']}")
-    print("混淆矩阵:")
-    print(best_eval_result['cm'])
+    # 合并成全局数据
+    X_all = np.vstack(X_list)
+    y_all = np.hstack(y_list)
+    groups_all = np.hstack(group_list)
 
-    # 绘制最佳split的交叉验证结果
-    print("\n绘制最佳split的交叉验证结果...")
-    Visualizer.plot_cv_results(best_eval_result)
+    print(f"\n样本: {X_all.shape[0]}, 被试数: {len(np.unique(groups_all))}")
 
-    # 绘制所有split的对比
-    print("\n绘制所有split的交叉验证结果对比...")
-    Visualizer.plot_all_splits_cv_results(all_eval_results)
+    # 3. 模型 + 跨被试验证
+    fm = FeatureModel(X_all, y_all, groups_all, fs)
+    results = fm.cross_validate_logo()
 
-    fpr = best_eval_result['fpr']
-    tpr = best_eval_result['tpr']
-    auc = best_eval_result['auc']
-    cm = best_eval_result['cm']
-
-    Visualizer.plot_auc(fpr, tpr, auc)
-    Visualizer.plot_confusion_matrix(cm)
+    last_subj = 4
+    Visualizer.plot_auc(
+        results[last_subj]['test']['fpr'],
+        results[last_subj]['test']['tpr'],
+        results[last_subj]['test']['auc']
+    )
+    Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
