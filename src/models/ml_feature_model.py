@@ -7,8 +7,9 @@ from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearc
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from sklearn.metrics import (
-    roc_auc_score, balanced_accuracy_score, f1_score, confusion_matrix, roc_curve
+    roc_auc_score, balanced_accuracy_score, f1_score, confusion_matrix, roc_curve, accuracy_score
 )
 
 from src.visualize.visualizer import Visualizer
@@ -83,23 +84,39 @@ class FeatureModel:
 
     def make_pipeline(self):
         clf = LogisticRegression(
-            # penalty="elasticnet",
             solver="saga",
-            max_iter=20000,
+            max_iter=30000,
             class_weight="balanced",
             random_state=RANDOM_STATE
         )
         pipe = Pipeline([
             ("scaler", StandardScaler()),
+            ("select", SelectKBest(score_func=mutual_info_classif, k="all")),
             ("clf", clf),
         ])
         return pipe
 
     def make_param_grid(self):
-        return {
-            "clf__C": [1e-3, 1e-2, 1e-1, 1, 10, 100],
-            "clf__l1_ratio": [0.1, 0.3, 0.5, 0.7, 0.9],
-        }
+        c_values = [1e-3, 1e-2, 1e-1, 1, 10]
+        select_k = [256, 512, 1024, "all"]
+        return [
+            {
+                "select__k": select_k,
+                "clf__penalty": ["l2"],
+                "clf__C": c_values,
+            },
+            {
+                "select__k": select_k,
+                "clf__penalty": ["l1"],
+                "clf__C": c_values,
+            },
+            {
+                "select__k": select_k,
+                "clf__penalty": ["elasticnet"],
+                "clf__C": c_values,
+                "clf__l1_ratio": [0.1, 0.3, 0.5, 0.7, 0.9],
+            }
+        ]
 
     def train_eval_one_split(self, X_train, y_train, X_test, y_test, inner_cv_splits=5):
         pipe = self.make_pipeline()
@@ -126,16 +143,23 @@ class FeatureModel:
         best_model = gs.best_estimator_
         best_score = gs.best_score_
 
+        # 基于训练集 ROC 曲线寻找最佳阈值（Youden's J）
+        y_train_prob_for_thr = best_model.predict_proba(X_train)[:, 1]
+        thr_fpr, thr_tpr, thresholds = roc_curve(y_train, y_train_prob_for_thr)
+        best_thr_idx = np.argmax(thr_tpr - thr_fpr)
+        best_threshold = float(thresholds[best_thr_idx])
+
         # 训练集上的预测
-        y_train_prob = best_model.predict_proba(X_train)[:, 1]
-        y_train_pred = (y_train_prob >= 0.5).astype(int)
+        y_train_prob = y_train_prob_for_thr
+        y_train_pred = (y_train_prob >= best_threshold).astype(int)
 
         # 测试集上的预测
         y_test_prob = best_model.predict_proba(X_test)[:, 1]
-        y_test_pred = (y_test_prob >= 0.5).astype(int)
+        y_test_pred = (y_test_prob >= best_threshold).astype(int)
 
         # 训练集指标
         train_auc = roc_auc_score(y_train, y_train_prob)
+        train_acc = accuracy_score(y_train, y_train_pred)
         train_bal_acc = balanced_accuracy_score(y_train, y_train_pred)
         train_f1 = f1_score(y_train, y_train_pred)
         train_cm = confusion_matrix(y_train, y_train_pred)
@@ -143,6 +167,7 @@ class FeatureModel:
 
         # 测试集指标
         test_auc = roc_auc_score(y_test, y_test_prob)
+        test_acc = accuracy_score(y_test, y_test_pred)
         test_bal_acc = balanced_accuracy_score(y_test, y_test_pred)
         test_f1 = f1_score(y_test, y_test_pred)
         test_cm = confusion_matrix(y_test, y_test_pred)
@@ -151,6 +176,7 @@ class FeatureModel:
         # 存储训练集结果
         eval_result['train'] = {
             'auc': float(train_auc),
+            'acc': float(train_acc),
             'bal_acc': float(train_bal_acc),
             'f1': float(train_f1),
             'cm': train_cm,
@@ -163,17 +189,20 @@ class FeatureModel:
         # 存储测试集结果
         eval_result['test'] = {
             'auc': float(test_auc),
+            'acc': float(test_acc),
             'bal_acc': float(test_bal_acc),
             'f1': float(test_f1),
             'cm': test_cm,
             'fpr': test_fpr,
-            'tpr': test_tpr
+            'tpr': test_tpr,
+            'best_threshold': best_threshold,
         }
 
         # 存储 cv_results 用于后续可视化
         eval_result['cv_results'] = gs.cv_results_
 
         eval_result['auc'] = float(test_auc)
+        eval_result['acc'] = float(test_acc)
         eval_result['bal_acc'] = float(test_bal_acc)
         eval_result['f1'] = float(test_f1)
         eval_result['cm'] = test_cm
