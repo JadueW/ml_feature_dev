@@ -1,6 +1,8 @@
 # 0. 导库
 import os
 import joblib
+from tqdm import tqdm
+from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 from src.preprocess.preprocessor import Preprocessor
@@ -34,12 +36,21 @@ def reconstruct_datasets(raw_data,raw_data_path):
 
 
 if __name__ == '__main__':
+
+    # 1. 文件夹目录定义
     RAW_DATASET_PATH = '../data/raw/'
     RECONSTRUCTED_DATASET_PATH = '../data/reconstruct_datasets/'
     PROCESSED_DATASET_PATH = '../data/processed/'
+    MODEL_SAVE_PATH = '../models/'
+
+    os.makedirs(MODEL_SAVE_PATH,exist_ok=True)
+    os.makedirs(RECONSTRUCTED_DATASET_PATH,exist_ok=True)
+    os.makedirs(PROCESSED_DATASET_PATH,exist_ok=True)
 
     RAW_DATA_LIST = [f for f in os.listdir('../data/raw/')]
     for f in RAW_DATA_LIST:
+
+        # 2. 数据格式重组
         raw_data_path = os.path.join(os.path.join(RAW_DATASET_PATH, f))
         raw_data = joblib.load(raw_data_path)
         reconstruct_datasets(raw_data,raw_data_path)
@@ -49,6 +60,8 @@ if __name__ == '__main__':
         datasets = reconstruct_data['datasets']
         label_mapping = reconstruct_data['label_mapping']
         fs = reconstruct_data['fs']
+
+        # 3. 数据预处理和特征提取
         preprocessor = Preprocessor(reconstruct_data)
         preprocessed_data = preprocessor.preprocess([50, 100, 150], 1, 200, 2, 4)
         preprocessed_datasets = {0: preprocessed_data[0], 1: preprocessed_data[1]}
@@ -62,28 +75,59 @@ if __name__ == '__main__':
         }
         joblib.dump(final_datasets,os.path.join(PROCESSED_DATASET_PATH,reconstruct_data_path.split("/")[3]))
 
-    # data_path = '../data/processed/test2.pkl'
-    # dataset = joblib.load(data_path)
-    # datasets = dataset['datasets']
-    # label_mapping = dataset['label_mapping']
-    # fs = dataset['fs']
-    #
-    # fm = FeatureModel(datasets, label_mapping, fs)
-    # X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
-    #
-    # # 获取最佳结果和所有结果
-    # best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test, n_splits=1)
-    # best_model = best_eval_result['best_model']
-    # fpr = best_eval_result['fpr']
-    # tpr = best_eval_result['tpr']
-    # auc = best_eval_result['auc']
-    # cm = best_eval_result['cm']
-    #
-    # model_save_path = "./ml_decoder_model.pkl"
-    # joblib.dump(best_model, model_save_path)
-    # print(best_eval_result)
-    # print(f"模型已保存至：{model_save_path}")
-    #
+    # 4. 加载处理后的数据
+    processed_files = [os.path.join(PROCESSED_DATASET_PATH, f) for f in os.listdir(PROCESSED_DATASET_PATH)]
+    X_list, y_list, group_list = [], [], []
+    fs = None
+    print("加载数据...")
+    for subj_idx, file_path in enumerate(tqdm(processed_files)):
+        data = joblib.load(file_path)
+        rest_data = data["datasets"][0]
+        task_data = data["datasets"][1]
+
+        rest_label = np.zeros(len(rest_data))
+        task_label = np.ones(len(task_data))
+
+        X_subj = np.vstack([rest_data, task_data])
+        y_subj = np.hstack([rest_label, task_label])
+        group_subj = np.full(len(X_subj), subj_idx)
+
+        X_list.append(X_subj)
+        y_list.append(y_subj)
+        group_list.append(group_subj)
+
+        if fs is None:
+            fs = data["fs"]
+
+    X_all = np.vstack(X_list)
+    y_all = np.hstack(y_list)
+    groups_all = np.hstack(group_list)
+    print(f"\n总样本: {X_all.shape[0]}, 被试数: {len(np.unique(groups_all))}")
+
+    # 5. 基于网格搜索和LeaveOneGroupOut的跨被试模型训练和交叉验证
+    fm = FeatureModel(X_all, y_all, groups_all, fs)
+    results = fm.cross_validate_logo(n_jobs=-1)
+    best_model = None
+
+    # 6. 取其中一个被试的结果进行可视化验证
+    last_subj = len(results) - 1
+    if last_subj in results:
+        Visualizer.plot_auc(
+            results[last_subj]['test']['fpr'],
+            results[last_subj]['test']['tpr'],
+            results[last_subj]['test']['auc']
+        )
+        Visualizer.plot_confusion_matrix(results[last_subj]['test']['cm'])
+
+
+    # 7. 模型保存
+    now = datetime.now()
+    date_str = now.strftime("%Y%m%d")
+    model_name = f"cross_subjects_model_{date_str}.pkl"
+    joblib.dump(best_model, os.path.join(MODEL_SAVE_PATH,model_name))
+    print(f"模型已保存至：{MODEL_SAVE_PATH}")
+
+
     # # 可视化auc 和混淆矩阵
     # Visualizer.plot_auc(fpr, tpr, auc)
     # Visualizer.plot_confusion_matrix(cm)
