@@ -1,1 +1,3 @@
-__all__ = ['shap_analysis']
+﻿from .shap_analysis import ShapAnalyzer
+
+__all__ = ["ShapAnalyzer"]

@@ -1,0 +1,8 @@
+﻿joblib>=1.4
+matplotlib>=3.8
+numpy>=1.26
+scikit-learn>=1.5
+scipy>=1.13
+seaborn>=0.13
+shap>=0.46
+tqdm>=4.66

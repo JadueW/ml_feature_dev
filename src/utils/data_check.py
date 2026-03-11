@@ -1,42 +1,41 @@
+﻿from __future__ import annotations
+
 import numpy as np
+
+from src.core import DatasetBundle
 
 
 class DataChecker:
-
-    RANDOM_STATE = 42
-    N_CHANNELS = 128
-    N_BANDS = 6
-    N_TYPES = 2  # 0=abs, 1=rel
-    N_FEATURES = N_CHANNELS * N_BANDS * N_TYPES
-
     @staticmethod
-    def check_inputs(X, y):
-        assert isinstance(X, np.ndarray) and isinstance(y, np.ndarray)
-        assert X.ndim == 2, f"X must be 2D, got {X.ndim}D"
-        assert y.ndim == 1, f"y must be 1D, got {y.ndim}D"
-        assert X.shape[0] == y.shape[0], "X and y must have same n_samples"
-        assert X.shape[1] == DataChecker.N_FEATURES, f"Expected {DataChecker.N_FEATURES} features, got {X.shape[1]}"
+    def check_inputs(X: np.ndarray, y: np.ndarray, expected_n_features: int | None = None) -> None:
+        if not isinstance(X, np.ndarray) or not isinstance(y, np.ndarray):
+            raise TypeError("X and y must both be numpy arrays")
+        if X.ndim != 2:
+            raise ValueError(f"X must be 2D, got {X.ndim}D")
+        if y.ndim != 1:
+            raise ValueError(f"y must be 1D, got {y.ndim}D")
+        if X.shape[0] != y.shape[0]:
+            raise ValueError("X and y must have the same number of samples")
+        if expected_n_features is not None and X.shape[1] != expected_n_features:
+            raise ValueError(f"Expected {expected_n_features} features, got {X.shape[1]}")
         if not np.isfinite(X).all():
             raise ValueError("X contains NaN or inf")
         if not np.isfinite(y).all():
             raise ValueError("y contains NaN or inf")
+
         classes = np.unique(y)
-        assert set(classes).issubset({0, 1}), f"y must be binary 0/1, got {classes}"
+        if not set(classes).issubset({0, 1}):
+            raise ValueError(f"y must be binary 0/1, got {classes}")
 
-        counts = {int(c): int((y == c).sum()) for c in classes}
-        print("Input OK:", X.shape, y.shape, "class counts:", counts)
+    @staticmethod
+    def check_feature_bundle(feature_bundle: DatasetBundle | dict) -> None:
+        if not isinstance(feature_bundle, DatasetBundle):
+            feature_bundle = DatasetBundle.from_serialized(feature_bundle)
 
-if __name__ == '__main__':
-    import joblib
-    data_path = '../../data/processed/test.pkl'
+        layout = feature_bundle.get_feature_layout()
+        expected_n_features = layout.n_features if layout is not None else None
 
-    dataset = joblib.load(data_path)
-    datasets = dataset['datasets']
-
-    rest_data = datasets[0]
-    task_data = datasets[1]
-    rest_labels = np.ones(rest_data.shape[0])*0
-    task_labels = np.ones(task_data.shape[0])*1
-
-    DataChecker.check_inputs(rest_data,rest_labels)
-    DataChecker.check_inputs(task_data,task_labels)
+        for class_id in feature_bundle.class_ids:
+            X = feature_bundle.get_class_data(class_id)
+            y = np.full(X.shape[0], class_id, dtype=int)
+            DataChecker.check_inputs(X, y, expected_n_features=expected_n_features)

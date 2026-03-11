@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="D:\software\miniconda\envs\feature_dev" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="D:\software\miniconda\envs\ml_feature_decode" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

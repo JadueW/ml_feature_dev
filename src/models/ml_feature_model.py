@@ -1,256 +1,365 @@
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+import warnings
+
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score, roc_auc_score, roc_curve
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    roc_auc_score, balanced_accuracy_score, f1_score, confusion_matrix, roc_curve
-)
+from tqdm import trange
 
-from src.visualize.visualizer import Visualizer
-
-import shap
-import numpy as np
-import warnings
-from tqdm import trange  # 导入 tqdm
+from src.core import DatasetBundle, ModelConfig, SplitConfig
 
 warnings.filterwarnings("ignore")
 
-RANDOM_STATE = 42
 
-N_CHANNELS = 128
-N_BANDS = 6
-N_TYPES = 2  # 0=abs, 1=rel
-N_FEATURES = N_CHANNELS * N_BANDS * N_TYPES
+SCORING_MAP = {
+    "auc": "roc_auc",
+    "accuracy": "accuracy",
+    "balanced_accuracy": "balanced_accuracy",
+    "f1": "f1",
+}
+
+
+@dataclass(frozen=True)
+class SplitData:
+    X_train: np.ndarray
+    y_train: np.ndarray
+    X_test: np.ndarray
+    y_test: np.ndarray
+
+
+@dataclass(frozen=True)
+class ClassificationMetrics:
+    accuracy: float
+    auc: float
+    balanced_accuracy: float
+    f1: float
+    confusion_matrix: np.ndarray
+    fpr: np.ndarray
+    tpr: np.ndarray
+
+    def to_summary_dict(self) -> dict[str, float]:
+        return {
+            "accuracy": self.accuracy,
+            "auc": self.auc,
+            "balanced_accuracy": self.balanced_accuracy,
+            "f1": self.f1,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "accuracy": self.accuracy,
+            "auc": self.auc,
+            "bal_acc": self.balanced_accuracy,
+            "balanced_accuracy": self.balanced_accuracy,
+            "f1": self.f1,
+            "cm": self.confusion_matrix,
+            "confusion_matrix": self.confusion_matrix,
+            "fpr": self.fpr,
+            "tpr": self.tpr,
+        }
+
+    def to_serializable_dict(self) -> dict[str, Any]:
+        return {
+            "accuracy": self.accuracy,
+            "auc": self.auc,
+            "balanced_accuracy": self.balanced_accuracy,
+            "f1": self.f1,
+            "confusion_matrix": self.confusion_matrix.tolist(),
+            "fpr": self.fpr.tolist(),
+            "tpr": self.tpr.tolist(),
+        }
+
+
+@dataclass
+class TrainingResult:
+    train: ClassificationMetrics
+    validation_metrics: dict[str, float]
+    test: ClassificationMetrics
+    best_params: dict[str, Any]
+    cv_best_score: float
+    cv_results: dict[str, Any]
+    cv_summary: dict[str, dict[str, Any]]
+    best_model: Pipeline
+    best_index: int
+    refit_metric: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "train": {**self.train.to_dict(), "best_params": self.best_params, "cv_best_score": self.cv_best_score},
+            "validation": self.validation_metrics,
+            "test": self.test.to_dict(),
+            "cv_results": self.cv_results,
+            "cv_summary": self.cv_summary,
+            "auc": self.test.auc,
+            "accuracy": self.test.accuracy,
+            "bal_acc": self.test.balanced_accuracy,
+            "f1": self.test.f1,
+            "cm": self.test.confusion_matrix,
+            "best_params": self.best_params,
+            "best_score": self.cv_best_score,
+            "best_index": self.best_index,
+            "refit_metric": self.refit_metric,
+            "fpr": self.test.fpr,
+            "tpr": self.test.tpr,
+            "best_model": self.best_model,
+        }
+
+    def to_serializable_dict(self) -> dict[str, Any]:
+        return {
+            "train": self.train.to_serializable_dict(),
+            "validation": self.validation_metrics,
+            "test": self.test.to_serializable_dict(),
+            "best_params": self.best_params,
+            "cv_best_score": self.cv_best_score,
+            "cv_summary": self.cv_summary,
+            "best_index": self.best_index,
+            "refit_metric": self.refit_metric,
+        }
+
 
 class FeatureModel:
-    def __init__(self, datasets, label_mapping, fs):
-        self.datasets = datasets
-        self.label_mapping = label_mapping
-        self.fs = fs
-
-        self.rest_data = self.datasets[0]
-        self.task_data = self.datasets[1]
-        self.rest_labels = np.ones(self.rest_data.shape[0]) * 0
-        self.task_labels = np.ones(self.task_data.shape[0]) * 1
-
-    def train_test_split_manual(self, strategy='min', ratio=0.8, m=None):
-        """
-        手动划分训练集和测试集
-        :param strategy:
-            - 'min': 取较小类别的全部样本作为训练集，确保均衡
-            - 'ratio': 从每个类别取 ratio 比例的样本（不超过较小类别的数量）
-            - 'fixed': 使用指定的 m 值
-        :param ratio: float, 默认 0.8, 当 strategy='ratio' 时使用
-        :param m: 当 strategy='fixed' 时使用，指定每个类别取多少样本
-        :return: X_train, y_train, X_test, y_test
-        """
-        N0 = self.rest_data.shape[0]  # non_task 样本数
-        N1 = self.task_data.shape[0]  # task 样本数
-
-        print(f"样本数量: non_task={N0}, task={N1}")
-
-        m0, m1 = 0,0
-
-        if strategy == 'min':
-            m = min(N0, N1)
-            print(f"策略: 取较小类别全部，m={m}")
-        elif strategy == 'ratio':
-            m0 = int(N0 * ratio)
-            m1 = int(N1 * ratio)
-            print(f"策略: 按比例 {ratio:.1%}")
-        elif strategy == 'fixed':
-            if m is None:
-                raise ValueError("strategy='fixed' 时必须指定 m 参数")
-            if m > min(N0, N1):
-                raise ValueError(f"m={m} 超过较小类别样本数 {min(N0, N1)}")
-            print(f"策略: 固定样本数，m={m}")
+    def __init__(self, dataset_bundle: DatasetBundle | dict):
+        if isinstance(dataset_bundle, DatasetBundle):
+            self.bundle = dataset_bundle
         else:
-            raise ValueError(f"未知策略: {strategy}")
+            self.bundle = DatasetBundle.from_serialized(dataset_bundle)
 
-        X_train = np.vstack([self.rest_data[:m0], self.task_data[:m1]])
-        y_train = np.concatenate([self.rest_labels[:m0], self.task_labels[:m1]])
+        if self.bundle.n_classes != 2:
+            raise ValueError(f"FeatureModel currently expects a binary dataset, got {self.bundle.n_classes} classes")
 
-        # 剩余作为测试集
-        X_test = np.vstack([self.rest_data[m0:], self.task_data[m1:]])
-        y_test = np.concatenate([self.rest_labels[m0:], self.task_labels[m1:]])
+    def _resolve_train_counts(self, config: SplitConfig) -> dict[int, int]:
+        class_counts = self.bundle.get_class_counts()
 
-        print(f"训练集: {X_train.shape[0]} 样本")
-        print(f"测试集: {X_test.shape[0]} 样本")
+        if config.strategy == "min":
+            samples_per_class = min(class_counts.values())
+            return {class_id: samples_per_class for class_id in self.bundle.class_ids}
 
-        return X_train, y_train, X_test, y_test
+        if config.strategy == "ratio":
+            return {class_id: int(count * config.ratio) for class_id, count in class_counts.items()}
 
-    def make_pipeline(self):
+        if config.strategy == "fixed":
+            if config.samples_per_class is None:
+                raise ValueError("samples_per_class is required when strategy='fixed'")
+            smallest_class = min(class_counts.values())
+            if config.samples_per_class > smallest_class:
+                raise ValueError(
+                    f"samples_per_class={config.samples_per_class} exceeds smallest class size {smallest_class}"
+                )
+            return {class_id: config.samples_per_class for class_id in self.bundle.class_ids}
+
+        raise ValueError(f"Unknown split strategy: {config.strategy}")
+
+    def create_split(self, config: SplitConfig | None = None) -> SplitData:
+        config = config or SplitConfig()
+        train_counts = self._resolve_train_counts(config)
+        rng = np.random.default_rng(42)
+
+        train_parts = []
+        test_parts = []
+        train_labels = []
+        test_labels = []
+
+        for class_id in self.bundle.class_ids:
+            class_data = self.bundle.get_class_data(class_id)
+            train_count = train_counts[class_id]
+            if train_count < 0 or train_count > class_data.shape[0]:
+                raise ValueError(f"Invalid train_count={train_count} for class {class_id}")
+            if train_count == 0 or train_count == class_data.shape[0]:
+                raise ValueError(
+                    f"Class {class_id} must keep at least one sample in both train and test splits, got train_count={train_count}"
+                )
+
+            indices = np.arange(class_data.shape[0])
+            if config.shuffle_within_class:
+                indices = rng.permutation(indices)
+            train_indices = indices[:train_count]
+            test_indices = indices[train_count:]
+
+            train_parts.append(class_data[train_indices])
+            test_parts.append(class_data[test_indices])
+            train_labels.append(np.full(train_indices.shape[0], class_id, dtype=int))
+            test_labels.append(np.full(test_indices.shape[0], class_id, dtype=int))
+
+        return SplitData(
+            X_train=np.vstack(train_parts),
+            y_train=np.concatenate(train_labels),
+            X_test=np.vstack(test_parts),
+            y_test=np.concatenate(test_labels),
+        )
+
+    def train_test_split_manual(
+        self,
+        strategy: str = "min",
+        ratio: float = 0.8,
+        m: int | None = None,
+        split_config: SplitConfig | None = None,
+    ):
+        if split_config is None:
+            split_config = SplitConfig(strategy=strategy, ratio=ratio, samples_per_class=m)
+        split = self.create_split(split_config)
+        return split.X_train, split.y_train, split.X_test, split.y_test
+
+    def make_pipeline(self, config: ModelConfig | None = None) -> Pipeline:
+        config = config or ModelConfig()
         clf = LogisticRegression(
             penalty="elasticnet",
             solver="saga",
-            max_iter=20000,
-            class_weight="balanced",
-            random_state=RANDOM_STATE,
+            max_iter=config.max_iter,
+            class_weight=config.class_weight,
+            random_state=config.random_state,
         )
-        pipe = Pipeline([
+        return Pipeline([
             ("scaler", StandardScaler()),
             ("clf", clf),
         ])
-        return pipe
 
-    def make_param_grid(self):
+    def make_param_grid(self, config: ModelConfig | None = None) -> dict:
+        config = config or ModelConfig()
         return {
-            "clf__C": [1e-3, 1e-2, 1e-1, 1, 10, 100],
-            "clf__l1_ratio": [0.1, 0.3, 0.5, 0.7, 0.9],
+            "clf__C": list(config.c_values),
+            "clf__l1_ratio": list(config.l1_ratios),
         }
 
-    def train_eval_one_split(self, X_train, y_train, X_test, y_test, inner_cv_splits=5):
-        pipe = self.make_pipeline()
-        param_grid = self.make_param_grid()
-        eval_result = {}
+    @staticmethod
+    def _evaluate_split(y_true: np.ndarray, probabilities: np.ndarray, threshold: float) -> ClassificationMetrics:
+        predictions = (probabilities >= threshold).astype(int)
+        auc = roc_auc_score(y_true, probabilities)
+        accuracy = accuracy_score(y_true, predictions)
+        balanced_accuracy = balanced_accuracy_score(y_true, predictions)
+        f1 = f1_score(y_true, predictions)
+        cm = confusion_matrix(y_true, predictions)
+        fpr, tpr, _ = roc_curve(y_true, probabilities)
+        return ClassificationMetrics(
+            accuracy=float(accuracy),
+            auc=float(auc),
+            balanced_accuracy=float(balanced_accuracy),
+            f1=float(f1),
+            confusion_matrix=cm,
+            fpr=fpr,
+            tpr=tpr,
+        )
 
+    @staticmethod
+    def _build_scoring(metrics: tuple[str, ...]) -> dict[str, str]:
+        unsupported = [metric for metric in metrics if metric not in SCORING_MAP]
+        if unsupported:
+            raise ValueError(f"Unsupported scoring metrics: {unsupported}")
+        return {metric: SCORING_MAP[metric] for metric in metrics}
+
+    @staticmethod
+    def _build_cv_summary(cv_results: dict[str, Any], metrics: tuple[str, ...], best_index: int) -> tuple[dict[str, dict[str, Any]], dict[str, float]]:
+        summary: dict[str, dict[str, Any]] = {}
+        validation_metrics: dict[str, float] = {}
+        param_labels = [f"P{idx + 1}" for idx in range(len(cv_results["params"]))]
+
+        for metric in metrics:
+            mean_train = np.asarray(cv_results[f"mean_train_{metric}"], dtype=float)
+            std_train = np.asarray(cv_results[f"std_train_{metric}"], dtype=float)
+            mean_validation = np.asarray(cv_results[f"mean_test_{metric}"], dtype=float)
+            std_validation = np.asarray(cv_results[f"std_test_{metric}"], dtype=float)
+
+            fold_train = []
+            fold_validation = []
+            fold_idx = 0
+            while f"split{fold_idx}_train_{metric}" in cv_results:
+                fold_train.append(float(cv_results[f"split{fold_idx}_train_{metric}"][best_index]))
+                fold_validation.append(float(cv_results[f"split{fold_idx}_test_{metric}"][best_index]))
+                fold_idx += 1
+
+            summary[metric] = {
+                "param_labels": param_labels,
+                "mean_train": mean_train.tolist(),
+                "std_train": std_train.tolist(),
+                "mean_validation": mean_validation.tolist(),
+                "std_validation": std_validation.tolist(),
+                "best_train_folds": fold_train,
+                "best_validation_folds": fold_validation,
+                "best_train_mean": float(mean_train[best_index]),
+                "best_validation_mean": float(mean_validation[best_index]),
+                "selected_index": best_index,
+                "selected_label": param_labels[best_index],
+            }
+            validation_metrics[metric] = float(mean_validation[best_index])
+
+        return summary, validation_metrics
+
+    def train_eval_one_split(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_test: np.ndarray,
+        y_test: np.ndarray,
+        model_config: ModelConfig | None = None,
+    ) -> TrainingResult:
+        model_config = model_config or ModelConfig()
+        pipeline = self.make_pipeline(model_config)
+        param_grid = self.make_param_grid(model_config)
         inner_cv = StratifiedKFold(
-            n_splits=inner_cv_splits,
+            n_splits=model_config.inner_cv_splits,
             shuffle=True,
-            random_state=RANDOM_STATE
+            random_state=model_config.random_state,
         )
 
-        gs = GridSearchCV(
-            estimator=pipe,
+        scoring = self._build_scoring(model_config.scoring_metrics)
+        search = GridSearchCV(
+            estimator=pipeline,
             param_grid=param_grid,
-            scoring="roc_auc",
+            scoring=scoring,
+            refit=model_config.refit_metric,
             cv=inner_cv,
-            refit=True,
             verbose=0,
-            return_train_score=True
+            return_train_score=True,
         )
-        gs.fit(X_train, y_train)
-        best_model = gs.best_estimator_
-        best_score = gs.best_score_
+        search.fit(X_train, y_train)
+        best_model = search.best_estimator_
+        best_index = int(search.best_index_)
 
-        # 训练集上的预测
-        y_train_prob = best_model.predict_proba(X_train)[:, 1]
-        y_train_pred = (y_train_prob >= 0.5).astype(int)
+        train_prob = best_model.predict_proba(X_train)[:, 1]
+        test_prob = best_model.predict_proba(X_test)[:, 1]
+        cv_summary, validation_metrics = self._build_cv_summary(search.cv_results_, model_config.scoring_metrics, best_index)
 
-        # 测试集上的预测
-        y_test_prob = best_model.predict_proba(X_test)[:, 1]
-        y_test_pred = (y_test_prob >= 0.5).astype(int)
+        return TrainingResult(
+            train=self._evaluate_split(y_train, train_prob, model_config.threshold),
+            validation_metrics=validation_metrics,
+            test=self._evaluate_split(y_test, test_prob, model_config.threshold),
+            best_params=search.best_params_,
+            cv_best_score=float(search.best_score_),
+            cv_results=search.cv_results_,
+            cv_summary=cv_summary,
+            best_model=best_model,
+            best_index=best_index,
+            refit_metric=model_config.refit_metric,
+        )
 
-        # 训练集指标
-        train_auc = roc_auc_score(y_train, y_train_prob)
-        train_bal_acc = balanced_accuracy_score(y_train, y_train_pred)
-        train_f1 = f1_score(y_train, y_train_pred)
-        train_cm = confusion_matrix(y_train, y_train_pred)
-        train_fpr, train_tpr, _ = roc_curve(y_train, y_train_prob)
+    def train_eval_splits(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_test: np.ndarray,
+        y_test: np.ndarray,
+        n_splits: int | None = None,
+        model_config: ModelConfig | None = None,
+    ) -> tuple[TrainingResult, dict[int, TrainingResult]]:
+        model_config = model_config or ModelConfig()
+        n_splits = model_config.repeat_splits if n_splits is None else n_splits
 
-        # 测试集指标
-        test_auc = roc_auc_score(y_test, y_test_prob)
-        test_bal_acc = balanced_accuracy_score(y_test, y_test_pred)
-        test_f1 = f1_score(y_test, y_test_pred)
-        test_cm = confusion_matrix(y_test, y_test_pred)
-        test_fpr, test_tpr, _ = roc_curve(y_test, y_test_prob)
+        all_results = {}
+        for split_idx in trange(n_splits, desc="Training splits"):
+            all_results[split_idx] = self.train_eval_one_split(
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                model_config=model_config,
+            )
 
-        # 存储训练集结果
-        eval_result['train'] = {
-            'auc': float(train_auc),
-            'bal_acc': float(train_bal_acc),
-            'f1': float(train_f1),
-            'cm': train_cm,
-            'fpr': train_fpr,
-            'tpr': train_tpr,
-            'best_params': gs.best_params_,
-            'cv_best_score': float(best_score)
-        }
-
-        # 存储测试集结果
-        eval_result['test'] = {
-            'auc': float(test_auc),
-            'bal_acc': float(test_bal_acc),
-            'f1': float(test_f1),
-            'cm': test_cm,
-            'fpr': test_fpr,
-            'tpr': test_tpr
-        }
-
-        # 存储 cv_results 用于后续可视化
-        eval_result['cv_results'] = gs.cv_results_
-
-        # 为兼容原有代码，保留顶层结果（测试集为主）
-        eval_result['auc'] = float(test_auc)
-        eval_result['bal_acc'] = float(test_bal_acc)
-        eval_result['f1'] = float(test_f1)
-        eval_result['cm'] = test_cm
-        eval_result['best_params'] = gs.best_params_
-        eval_result['best_score'] = float(best_score)
-        eval_result['fpr'] = test_fpr
-        eval_result['tpr'] = test_tpr
-        eval_result['best_model'] = best_model
-
-        return eval_result
-
-    def train_eval_splits(self, X_train, y_train, X_test, y_test, n_splits=5):
-
-        n_splits_eval_results = {}
-        for i in trange(n_splits, desc="Training splits"):
-            eval_result = self.train_eval_one_split(X_train, y_train, X_test, y_test)
-            n_splits_eval_results[i] = eval_result
-
-        best_eval_result = max(n_splits_eval_results.values(), key=lambda x: x['best_score'])
-        return best_eval_result, n_splits_eval_results
+        best_result = max(all_results.values(), key=lambda result: result.cv_best_score)
+        return best_result, all_results
 
 
-if __name__ == '__main__':
-    data_path = '../../data/processed/test.pkl'
-    import joblib
-
-    dataset = joblib.load(data_path)
-    datasets = dataset['datasets']
-    label_mapping = dataset['label_mapping']
-    fs = dataset['fs']
-
-    fm = FeatureModel(datasets, label_mapping, fs)
-    X_train, y_train, X_test, y_test = fm.train_test_split_manual(strategy='ratio')
-
-    # 获取最佳结果和所有结果
-    best_eval_result, all_eval_results = fm.train_eval_splits(X_train, y_train, X_test, y_test,n_splits=1)
-
-    print("\n最佳评估结果对比:")
-    print("-" * 50)
-    print("训练集表现:")
-    print(f"  AUC: {best_eval_result['train']['auc']:.4f}")
-    print(f"  平衡准确率: {best_eval_result['train']['bal_acc']:.4f}")
-    print(f"  F1: {best_eval_result['train']['f1']:.4f}")
-    print(f"  交叉验证得分: {best_eval_result['train']['cv_best_score']:.4f}")
-
-    print("\n测试集表现:")
-    print(f"  AUC: {best_eval_result['test']['auc']:.4f}")
-    print(f"  平衡准确率: {best_eval_result['test']['bal_acc']:.4f}")
-    print(f"  F1: {best_eval_result['test']['f1']:.4f}")
-    print("-" * 50)
-
-    # 检查过拟合情况
-    train_auc = best_eval_result['train']['auc']
-    test_auc = best_eval_result['test']['auc']
-    gap = train_auc - test_auc
-    print(f"训练集-测试集 AUC 差距: {gap:.4f}")
-    if gap > 0.1:
-        print("⚠️ 可能存在过拟合，差距较大")
-    elif gap < -0.05:
-        print("⚠️ 测试集表现优于训练集，数据分布可能不一致")
-    else:
-        print("✅ 模型泛化能力良好")
-
-    print(f"\n最佳参数: {best_eval_result['best_params']}")
-    print("混淆矩阵:")
-    print(best_eval_result['cm'])
-
-    # 绘制最佳split的交叉验证结果
-    print("\n绘制最佳split的交叉验证结果...")
-    Visualizer.plot_cv_results(best_eval_result)
-
-    # 绘制所有split的对比
-    print("\n绘制所有split的交叉验证结果对比...")
-    Visualizer.plot_all_splits_cv_results(all_eval_results)
-
-    fpr = best_eval_result['fpr']
-    tpr = best_eval_result['tpr']
-    auc = best_eval_result['auc']
-    cm = best_eval_result['cm']
-
-    Visualizer.plot_auc(fpr, tpr, auc)
-    Visualizer.plot_confusion_matrix(cm)

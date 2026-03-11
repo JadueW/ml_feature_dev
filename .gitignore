@@ -166,3 +166,5 @@ data/raw
 data/reconstruct_datasets
 
 .xml
+
+outputs/
