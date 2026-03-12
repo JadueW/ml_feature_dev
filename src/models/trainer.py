@@ -1,8 +1,9 @@
 import joblib
 import warnings
 import numpy as np
+import pandas as pd
 from sklearn.base import clone
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, roc_curve
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score, make_scorer, precision_score, recall_score, roc_auc_score, roc_curve
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 
 from src.models.model_factory import create_model_pipeline, create_param_grid
@@ -14,10 +15,26 @@ SCORING = {
     'auc': 'roc_auc',
     'accuracy': 'accuracy',
     'balanced_accuracy': 'balanced_accuracy',
-    'f1': 'f1',
-    'precision': 'precision',
-    'recall': 'recall'
+    'f1': make_scorer(f1_score, zero_division=0),
+    'precision': make_scorer(precision_score, zero_division=0),
+    'recall': make_scorer(recall_score, zero_division=0)
 }
+
+
+def build_feature_frame(x_data):
+    if isinstance(x_data, pd.DataFrame):
+        return x_data
+    array_data = np.asarray(x_data)
+    if array_data.ndim != 2:
+        raise ValueError('Expected 2D feature matrix, got shape %s' % (array_data.shape,))
+    columns = ['f_%04d' % idx for idx in range(array_data.shape[1])]
+    return pd.DataFrame(array_data, columns=columns)
+
+
+def prepare_model_input(x_data, model_name):
+    if model_name == 'lightgbm':
+        return build_feature_frame(x_data)
+    return x_data
 
 
 def get_prediction_scores(estimator, x_data):
@@ -59,13 +76,15 @@ def score_threshold_metric(y_true, predicted, metric_name):
     raise ValueError('Unsupported threshold metric: %s' % metric_name)
 
 
-def compute_oof_scores(best_model, x_train, y_train, n_splits, random_state):
+def compute_oof_scores(best_model, x_train, y_train, n_splits, random_state, model_name):
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     oof_scores = np.zeros(len(y_train), dtype=float)
     for fold_train, fold_valid in cv.split(x_train, y_train):
         model = clone(best_model)
-        model.fit(x_train[fold_train], y_train[fold_train])
-        oof_scores[fold_valid] = get_prediction_scores(model, x_train[fold_valid])
+        fold_x_train = prepare_model_input(x_train[fold_train], model_name)
+        fold_x_valid = prepare_model_input(x_train[fold_valid], model_name)
+        model.fit(fold_x_train, y_train[fold_train])
+        oof_scores[fold_valid] = get_prediction_scores(model, fold_x_valid)
     return oof_scores
 
 
@@ -139,12 +158,14 @@ def train_one_model(x_train, y_train, x_test, y_test, model_name, model_config):
         return_train_score=True,
         verbose=0
     )
-    search.fit(x_train, y_train)
+    prepared_x_train = prepare_model_input(x_train, model_name)
+    prepared_x_test = prepare_model_input(x_test, model_name)
+    search.fit(prepared_x_train, y_train)
 
     best_model = search.best_estimator_
-    train_scores = get_prediction_scores(best_model, x_train)
-    test_scores = get_prediction_scores(best_model, x_test)
-    oof_scores = compute_oof_scores(best_model, x_train, y_train, model_config['inner_cv_splits'], model_config['random_state'])
+    train_scores = get_prediction_scores(best_model, prepared_x_train)
+    test_scores = get_prediction_scores(best_model, prepared_x_test)
+    oof_scores = compute_oof_scores(best_model, x_train, y_train, model_config['inner_cv_splits'], model_config['random_state'], model_name)
     selected_threshold, threshold_info = select_threshold(y_train, oof_scores, model_config)
 
     return {
