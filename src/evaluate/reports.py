@@ -15,21 +15,24 @@ def _finalize(fig, output_path):
 
 def plot_stage_metrics(result, output_dir, plot_format):
     stages = ['train_metrics', 'validation_metrics', 'test_metrics']
-    metric_names = ['accuracy', 'auc', 'balanced_accuracy', 'f1']
+    metric_names = ['accuracy', 'auc', 'balanced_accuracy', 'f1', 'precision', 'recall']
     values = []
     for stage_name in stages:
         values.append([result[stage_name][metric] for metric in metric_names])
     values = np.asarray(values)
     x_axis = np.arange(len(metric_names))
     width = 0.24
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(13, 5))
     colors = ['#123A8C', '#2E8B57', '#C24642']
     labels = ['Train', 'Validation', 'Test']
     for idx in range(3):
-        ax.bar(x_axis + (idx - 1) * width, values[idx], width=width, color=colors[idx], label=labels[idx])
+        bars = ax.bar(x_axis + (idx - 1) * width, values[idx], width=width, color=colors[idx], label=labels[idx])
+        for bar in bars:
+            value = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, value + 0.012, '%.3f' % value, ha='center', va='bottom', fontsize=8)
     ax.set_xticks(x_axis)
     ax.set_xticklabels(metric_names)
-    ax.set_ylim(0.0, 1.05)
+    ax.set_ylim(0.0, 1.10)
     ax.set_title('Stage Metrics')
     ax.legend()
     ax.grid(axis='y', alpha=0.2)

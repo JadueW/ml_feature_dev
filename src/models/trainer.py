@@ -2,7 +2,7 @@ import joblib
 import warnings
 import numpy as np
 from sklearn.base import clone
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score, roc_auc_score, roc_curve
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score, roc_curve
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 
 from src.models.model_factory import create_model_pipeline, create_param_grid
@@ -14,7 +14,9 @@ SCORING = {
     'auc': 'roc_auc',
     'accuracy': 'accuracy',
     'balanced_accuracy': 'balanced_accuracy',
-    'f1': 'f1'
+    'f1': 'f1',
+    'precision': 'precision',
+    'recall': 'recall'
 }
 
 
@@ -39,6 +41,8 @@ def evaluate_predictions(y_true, scores, threshold):
         'auc': float(roc_auc_score(y_true, scores)),
         'balanced_accuracy': float(balanced_accuracy_score(y_true, predicted)),
         'f1': float(f1_score(y_true, predicted)),
+        'precision': float(precision_score(y_true, predicted, zero_division=0)),
+        'recall': float(recall_score(y_true, predicted, zero_division=0)),
         'confusion_matrix': confusion_matrix(y_true, predicted).tolist(),
         'fpr': fpr.tolist(),
         'tpr': tpr.tolist()
@@ -95,7 +99,7 @@ def select_threshold(y_true, scores, model_config):
 
 def summarize_cv(cv_results, best_index):
     summary = {}
-    for metric_name in ['auc', 'accuracy', 'balanced_accuracy', 'f1']:
+    for metric_name in ['auc', 'accuracy', 'balanced_accuracy', 'f1', 'precision', 'recall']:
         summary[metric_name] = {
             'mean_train': np.asarray(cv_results['mean_train_%s' % metric_name], dtype=float).tolist(),
             'mean_validation': np.asarray(cv_results['mean_test_%s' % metric_name], dtype=float).tolist(),
@@ -155,7 +159,9 @@ def train_one_model(x_train, y_train, x_test, y_test, model_name, model_config):
             'auc': float(search.cv_results_['mean_test_auc'][search.best_index_]),
             'accuracy': float(search.cv_results_['mean_test_accuracy'][search.best_index_]),
             'balanced_accuracy': float(search.cv_results_['mean_test_balanced_accuracy'][search.best_index_]),
-            'f1': float(search.cv_results_['mean_test_f1'][search.best_index_])
+            'f1': float(search.cv_results_['mean_test_f1'][search.best_index_]),
+            'precision': float(search.cv_results_['mean_test_precision'][search.best_index_]),
+            'recall': float(search.cv_results_['mean_test_recall'][search.best_index_])
         },
         'test_metrics': evaluate_predictions(y_test, test_scores, selected_threshold),
         'cv_summary': summarize_cv(search.cv_results_, search.best_index_)
