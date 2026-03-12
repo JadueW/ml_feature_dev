@@ -1,8 +1,8 @@
-{
-  "experiment_name": "baseline_v2_offline_decoder",
+﻿{
+  "experiment_name": "deployment_gross_decoder",
   "raw_data_dir": "data/raw",
-  "cache_dir": "data/processed/feature_cache",
-  "output_dir": "outputs/baseline_v2_grossMovement",
+  "cache_dir": "data/processed/feature_cache/grossMovement",
+  "output_dir": "outputs/deployment_models/grossMovement",
   "n_channels": 128,
   "channel_select_mode": "last",
   "label_mode": "binary_rest_task",
@@ -35,22 +35,7 @@
       "high_gamma_rel_psd"
     ]
   },
-  "splits": {
-    "single_day": {
-      "enabled": true,
-      "train_ratio": 0.85,
-      "shuffle_within_class": true
-    },
-    "leave_one_day_out": {
-      "enabled": true
-    },
-    "chronological": {
-      "enabled": true
-    }
-  },
   "model": {
-    "candidates": ["logistic_regression", "linear_svc","lightgbm"],
-    "primary_model": "logistic_regression",
     "scaler": "standard",
     "class_weight": "balanced",
     "random_state": 42,
@@ -75,10 +60,16 @@
       "n_estimators": [100, 200, 300]
     }
   },
-  "report": {
-    "save_json": true,
-    "save_model": true,
-    "save_plots": true,
-    "plot_format": "png"
+  "deployment": {
+    "model_name": "logistic_regression",
+    "best_params": {
+      "clf__C": 10.0,
+      "clf__l1_ratio": 0.1
+    },
+    "threshold_mode": "fixed",
+    "threshold": 0.55,
+    "output_dir": "outputs/deployment_models/grossMovement",
+    "model_filename": "gross_decoder_bundle.pkl",
+    "summary_filename": "gross_decoder_summary.json"
   }
 }

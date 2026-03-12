@@ -1,4 +1,4 @@
-import joblib
+﻿import joblib
 import warnings
 import numpy as np
 import pandas as pd
@@ -89,13 +89,6 @@ def compute_oof_scores(best_model, x_train, y_train, n_splits, random_state, mod
 
 
 def select_threshold(y_true, scores, model_config):
-    """
-    训练集 OOF 阈值选择
-    :param y_true:
-    :param scores:
-    :param model_config:
-    :return:
-    """
     metric_name = model_config['threshold_metric']
     threshold_grid = model_config['threshold_grid']
     best_threshold = 0.5
@@ -130,16 +123,6 @@ def summarize_cv(cv_results, best_index):
 
 
 def train_one_model(x_train, y_train, x_test, y_test, model_name, model_config):
-    """
-    网格搜索
-    :param x_train:
-    :param y_train:
-    :param x_test:
-    :param y_test:
-    :param model_name:
-    :param model_config:
-    :return:
-    """
     pipeline = create_model_pipeline(model_name, model_config)
     if pipeline is None:
         return None
@@ -199,3 +182,29 @@ def choose_best_result(result_list, refit_metric):
 def save_model(path_value, trained_model):
     path_value.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(trained_model, path_value)
+
+
+def fit_fixed_model(x_train, y_train, model_name, model_config, best_params=None):
+    pipeline = create_model_pipeline(model_name, model_config)
+    if pipeline is None:
+        raise ValueError('Unable to create model pipeline for %s' % model_name)
+    if best_params:
+        pipeline.set_params(**best_params)
+    prepared_x_train = prepare_model_input(x_train, model_name)
+    pipeline.fit(prepared_x_train, y_train)
+    train_scores = get_prediction_scores(pipeline, prepared_x_train)
+    oof_scores = compute_oof_scores(
+        pipeline,
+        x_train,
+        y_train,
+        model_config['inner_cv_splits'],
+        model_config['random_state'],
+        model_name
+    )
+    return {
+        'model_name': model_name,
+        'model': pipeline,
+        'train_scores': train_scores,
+        'oof_scores': oof_scores,
+        'train_metrics_at_default': evaluate_predictions(y_train, train_scores, 0.5)
+    }

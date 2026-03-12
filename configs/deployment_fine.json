@@ -1,15 +1,15 @@
-{
-  "experiment_name": "baseline_v2_offline_decoder",
+﻿{
+  "experiment_name": "deployment_fine_decoder",
   "raw_data_dir": "data/raw",
-  "cache_dir": "data/processed/feature_cache",
-  "output_dir": "outputs/baseline_v2_grossMovement",
+  "cache_dir": "data/processed/feature_cache/fineMovement",
+  "output_dir": "outputs/deployment_models/fineMovement",
   "n_channels": 128,
   "channel_select_mode": "last",
   "label_mode": "binary_rest_task",
   "rest_label": 0,
   "task_labels": [1, 2, 3, 4],
   "subject": "WHTJYY",
-  "task_type": "grossMovement",
+  "task_type": "fineMovement",
   "preprocess": {
     "notch_freqs": [50.0, 100.0, 150.0],
     "notch_bandwidth": 2.0,
@@ -35,22 +35,7 @@
       "high_gamma_rel_psd"
     ]
   },
-  "splits": {
-    "single_day": {
-      "enabled": true,
-      "train_ratio": 0.85,
-      "shuffle_within_class": true
-    },
-    "leave_one_day_out": {
-      "enabled": true
-    },
-    "chronological": {
-      "enabled": true
-    }
-  },
   "model": {
-    "candidates": ["logistic_regression", "linear_svc","lightgbm"],
-    "primary_model": "logistic_regression",
     "scaler": "standard",
     "class_weight": "balanced",
     "random_state": 42,
@@ -75,10 +60,16 @@
       "n_estimators": [100, 200, 300]
     }
   },
-  "report": {
-    "save_json": true,
-    "save_model": true,
-    "save_plots": true,
-    "plot_format": "png"
+  "deployment": {
+    "model_name": "logistic_regression",
+    "best_params": {
+      "clf__C": 0.1,
+      "clf__l1_ratio": 0.1
+    },
+    "threshold_mode": "fixed",
+    "threshold": 0.4,
+    "output_dir": "outputs/deployment_models/fineMovement",
+    "model_filename": "fine_decoder_bundle.pkl",
+    "summary_filename": "fine_decoder_summary.json"
   }
 }

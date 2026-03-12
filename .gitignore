@@ -167,4 +167,4 @@ data/reconstruct_datasets
 
 .xml
 
-outputs/
+/data/processed/feature_cache

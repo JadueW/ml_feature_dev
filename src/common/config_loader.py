@@ -1,7 +1,7 @@
-import json
+﻿import json
 from pathlib import Path
 """
-    负责json配置文件的加载、路径解析、输出目录创建和JSON保存
+    璐熻矗json閰嶇疆鏂囦欢鐨勫姞杞姐€佽矾寰勮В鏋愩€佽緭鍑虹洰褰曞垱寤哄拰JSON淇濆瓨
 """
 
 def get_project_root():
@@ -23,7 +23,7 @@ def ensure_dir(path_value):
 
 def load_json(path_value):
     path_obj = resolve_path(path_value)
-    with open(path_obj, 'r', encoding='utf-8') as f:
+    with open(path_obj, 'r', encoding='utf-8-sig') as f:
         return json.load(f)
 
 
@@ -45,5 +45,6 @@ def _json_default(value):
 def save_json(path_value, payload):
     path_obj = resolve_path(path_value)
     path_obj.parent.mkdir(parents=True, exist_ok=True)
-    with open(path_obj, 'w', encoding='utf-8') as f:
+    with open(path_obj, 'w', encoding='utf-8-sig') as f:
         json.dump(payload, f, indent=2, ensure_ascii=False, default=_json_default)
+
