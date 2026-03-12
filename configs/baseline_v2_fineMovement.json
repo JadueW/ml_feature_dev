@@ -1,0 +1,156 @@
+{
+  "experiment_name": "baseline_v2_fineMovement",
+  "raw_data_dir": "data/raw",
+  "cache_dir": "data/processed/feature_cache/fineMovement",
+  "output_dir": "outputs/baseline_v2/fineMovement",
+  "n_channels": 128,
+  "channel_select_mode": "last",
+  "label_mode": "binary_rest_task",
+  "rest_label": 0,
+  "task_labels": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "subject": "WHTJYY",
+  "task_type": "fineMovement",
+  "preprocess": {
+    "notch_freqs": [
+      50.0,
+      100.0,
+      150.0
+    ],
+    "notch_bandwidth": 2.0,
+    "bandpass_low": 1.0,
+    "bandpass_high": 200.0,
+    "bandpass_order": 4,
+    "use_car": true
+  },
+  "features": {
+    "psd_method": "welch",
+    "nperseg": 512,
+    "noverlap": 256,
+    "total_power_range": [
+      1.0,
+      200.0
+    ],
+    "bands": {
+      "beta": [
+        13.0,
+        30.0
+      ],
+      "high_gamma": [
+        70.0,
+        200.0
+      ]
+    },
+    "use_log_abs_power": true,
+    "feature_order": [
+      "beta_abs_psd",
+      "beta_rel_psd",
+      "high_gamma_abs_psd",
+      "high_gamma_rel_psd"
+    ]
+  },
+  "splits": {
+    "single_day": {
+      "enabled": true,
+      "train_ratio": 0.8,
+      "shuffle_within_class": false
+    },
+    "leave_one_day_out": {
+      "enabled": true
+    },
+    "chronological": {
+      "enabled": true
+    }
+  },
+  "model": {
+    "candidates": [
+      "logistic_regression",
+      "linear_svc",
+      "lightgbm"
+    ],
+    "primary_model": "logistic_regression",
+    "scaler": "standard",
+    "class_weight": "balanced",
+    "random_state": 42,
+    "inner_cv_splits": 5,
+    "refit_metric": "auc",
+    "threshold_metric": "balanced_accuracy",
+    "threshold_grid": [
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9
+    ],
+    "logistic_regression": {
+      "c_values": [
+        0.001,
+        0.01,
+        0.1,
+        1.0,
+        10.0,
+        100.0
+      ],
+      "l1_ratios": [
+        0.1,
+        0.3,
+        0.5,
+        0.7,
+        0.9
+      ],
+      "solver": "saga",
+      "penalty": "elasticnet",
+      "max_iter": 20000
+    },
+    "linear_svc": {
+      "c_values": [
+        0.001,
+        0.01,
+        0.1,
+        1.0,
+        10.0,
+        100.0
+      ],
+      "max_iter": 20000
+    },
+    "lightgbm": {
+      "num_leaves": [
+        15,
+        31,
+        63
+      ],
+      "learning_rate": [
+        0.03,
+        0.05,
+        0.1
+      ],
+      "n_estimators": [
+        100,
+        200,
+        300
+      ]
+    }
+  },
+  "report": {
+    "save_json": true,
+    "save_model": true,
+    "save_plots": true,
+    "plot_format": "png"
+  }
+}

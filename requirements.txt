@@ -6,3 +6,4 @@ scipy>=1.13
 seaborn>=0.13
 shap>=0.46
 tqdm>=4.66
+lightgbm==4.6.0
