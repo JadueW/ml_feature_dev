@@ -69,7 +69,7 @@
     "threshold_mode": "fixed",
     "threshold": 0.4,
     "output_dir": "outputs/deployment_models/fineMovement",
-    "model_filename": "fine_decoder_bundle.pkl",
+    "model_filename": "fine_decoder.pkl",
     "summary_filename": "fine_decoder_summary.json"
   }
 }

@@ -53,43 +53,12 @@ def build_deployment_bundle(config_path):
     summary_filename = deployment_cfg.get('summary_filename', '%s_decoder_summary.json' % config['task_type'])
 
     bundle = {
-        'bundle_type': 'deployment_decoder',
-        'subject': config.get('subject'),
-        'task_type': config.get('task_type'),
-        'label_mapping': dict(train_bundle['label_mapping']),
-        'train_days': list(train_bundle['metadata'].get('deployment_train_days', [])),
-        'n_channels': config['n_channels'],
-        'channel_select_mode': config.get('channel_select_mode', 'last'),
-        'preprocess': dict(config['preprocess']),
-        'features': dict(config['features']),
-        'model_name': deployment_cfg['model_name'],
-        'best_params': dict(deployment_cfg.get('best_params', {})),
-        'threshold': float(threshold),
-        'threshold_info': threshold_info,
-        'train_metrics': deployment_metrics,
         'model': fixed_training['model']
     }
 
     model_path = Path(output_dir) / model_filename
-    summary_path = Path(output_dir) / summary_filename
     save_model(model_path, bundle)
-    save_json(summary_path, {
-        'subject': bundle['subject'],
-        'task_type': bundle['task_type'],
-        'train_days': bundle['train_days'],
-        'model_name': bundle['model_name'],
-        'best_params': bundle['best_params'],
-        'threshold': bundle['threshold'],
-        'threshold_info': bundle['threshold_info'],
-        'train_metrics': bundle['train_metrics'],
-        'output_model_path': str(resolve_path(model_path))
-    })
-    return {
-        'model_path': str(resolve_path(model_path)),
-        'summary_path': str(resolve_path(summary_path)),
-        'threshold': bundle['threshold'],
-        'train_metrics': deployment_metrics
-    }
+
 
 
 def build_all_deployment_bundles(config_paths):
