@@ -1,5 +1,38 @@
 import numpy as np
-from scipy.signal import butter, iirnotch, sosfiltfilt, tf2sos
+from scipy.signal import butter, iirnotch, sosfiltfilt, tf2sos,resample_poly
+
+def down_sampling(data_array, fs, down_fs,order=4):
+    """
+    降采样
+    :param data_array:
+    :param fs: 当前采样率
+    :param down_fs: 目标采样率
+    :param order:
+    :return:
+    """
+    data_array = np.asarray(data_array,dtype=float)
+
+    if down_fs <= 0 or fs <= 0:
+        raise ValueError("fs and down_fs must be positive")
+    if down_fs > fs:
+        raise ValueError("down_fs should not be greater than fs")
+    if down_fs == fs:
+        return data_array
+
+    ratio = fs / down_fs
+    factor = int(round(ratio))
+
+    # 整数倍率：低通后抽取
+    if np.isclose(ratio, factor):
+        cutoff = 0.8 * (down_fs / 2.0)
+        sos = butter(order, cutoff, btype="low", fs=fs, output="sos")
+        filtered = sosfiltfilt(sos, data_array, axis=-1)
+        return filtered[..., ::factor]
+
+    # 非整数倍率：用多相重采样
+    up = down_fs
+    down = fs
+    return resample_poly(data_array, up, down, axis=-1)
 
 
 def common_average_reference(data_array):
@@ -74,6 +107,7 @@ def preprocess_bundle(bundle, preprocess_config):
 
     for class_id in sorted(bundle['datasets']):
         data_array = np.asarray(bundle['datasets'][class_id])
+        data_array = down_sampling(data_array, fs, 500)
         filtered = sosfiltfilt(total_sos, data_array, axis=-1)
         if use_car:
             filtered = common_average_reference(filtered)
